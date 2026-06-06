@@ -12,15 +12,40 @@ export type FileTreeStateStore = Record<string, ProjectEntry>;
 /**
  * Parse the raw localStorage value into a store. Returns an empty store when
  * the value is absent or not valid JSON (defensive against corruption).
+ *
+ * Each entry is validated structurally: only entries that are objects with a
+ * numeric `lastAccess` and an array `collapsed` are kept. Non-string elements
+ * within `collapsed` are dropped. Invalid entries are skipped entirely so that
+ * downstream functions (purgeExpired, getCollapsedSet) never see malformed data.
  */
 export function parseStore(raw: string | null): FileTreeStateStore {
   if (!raw) return {};
   try {
     const parsed = JSON.parse(raw);
-    if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
-      return parsed as FileTreeStateStore;
+    // Reject null (typeof null === "object"), arrays, and primitives.
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+      return {};
     }
-    return {};
+    const store: FileTreeStateStore = {};
+    for (const [projectId, entry] of Object.entries(
+      parsed as Record<string, unknown>,
+    )) {
+      if (!entry || typeof entry !== "object" || Array.isArray(entry)) {
+        continue;
+      }
+      const { collapsed, lastAccess } = entry as {
+        collapsed?: unknown;
+        lastAccess?: unknown;
+      };
+      if (typeof lastAccess !== "number" || !Array.isArray(collapsed)) {
+        continue;
+      }
+      store[projectId] = {
+        collapsed: collapsed.filter((p): p is string => typeof p === "string"),
+        lastAccess,
+      };
+    }
+    return store;
   } catch {
     return {};
   }

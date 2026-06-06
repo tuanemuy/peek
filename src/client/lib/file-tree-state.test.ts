@@ -29,6 +29,38 @@ describe("parseStore", () => {
     };
     expect(parseStore(JSON.stringify(store))).toEqual(store);
   });
+
+  it("returns an empty store for null JSON", () => {
+    expect(parseStore("null")).toEqual({});
+  });
+
+  it("drops entries whose collapsed is not an array", () => {
+    expect(parseStore('{"p":{"collapsed":"x","lastAccess":1}}')).toEqual({});
+  });
+
+  it("drops entries whose lastAccess is not a number", () => {
+    expect(parseStore('{"p":{"collapsed":[],"lastAccess":"old"}}')).toEqual({});
+  });
+
+  it("drops entries that are not objects", () => {
+    expect(parseStore('{"p":42}')).toEqual({});
+  });
+
+  it("excludes non-string elements from collapsed", () => {
+    expect(
+      parseStore('{"p":{"collapsed":["a",1,null,"b"],"lastAccess":5}}'),
+    ).toEqual({ p: { collapsed: ["a", "b"], lastAccess: 5 } });
+  });
+
+  it("keeps valid entries while dropping invalid ones", () => {
+    const raw = JSON.stringify({
+      good: { collapsed: ["a"], lastAccess: 10 },
+      bad: { collapsed: "x", lastAccess: 20 },
+    });
+    expect(parseStore(raw)).toEqual({
+      good: { collapsed: ["a"], lastAccess: 10 },
+    });
+  });
 });
 
 describe("purgeExpired", () => {

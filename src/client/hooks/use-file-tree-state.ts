@@ -22,6 +22,12 @@ export function useFileTreeState(projectId: string): FileTreeState {
   const [collapsed, setCollapsed] = useState<Set<string>>(() => new Set());
   const initialMount = useRef(true);
 
+  // Keep a ref in sync with the latest collapsed set (same approach as
+  // DirectoryApp's currentPathRef) so that `toggle` can compute the next set
+  // outside of a state updater, keeping the updater pure.
+  const collapsedRef = useRef(collapsed);
+  collapsedRef.current = collapsed;
+
   // Read the persisted store, guarding against environments where localStorage
   // throws (e.g. private browsing).
   function readStore(): FileTreeStateStore {
@@ -63,19 +69,19 @@ export function useFileTreeState(projectId: string): FileTreeState {
 
   const toggle = useCallback(
     (path: string) => {
-      setCollapsed((prev) => {
-        const next = new Set(prev);
-        if (next.has(path)) {
-          next.delete(path);
-        } else {
-          next.add(path);
-        }
-        // Re-read the latest store before writing so concurrent updates from
-        // other tabs/projects are not clobbered.
-        const store = writeCollapsed(readStore(), projectId, next, Date.now());
-        writeStore(store);
-        return next;
-      });
+      const next = new Set(collapsedRef.current);
+      if (next.has(path)) {
+        next.delete(path);
+      } else {
+        next.add(path);
+      }
+      collapsedRef.current = next;
+      // The state updater is kept pure (just returns `next`); the localStorage
+      // side effect runs outside of it. Re-read the latest store before writing
+      // so concurrent updates from other tabs/projects are not clobbered.
+      setCollapsed(next);
+      const store = writeCollapsed(readStore(), projectId, next, Date.now());
+      writeStore(store);
     },
     [projectId],
   );
