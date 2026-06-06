@@ -3,6 +3,7 @@ import type { FileTreeNode } from "./file-tree.js";
 
 export type DirectoryInitialState = {
   readonly mode: "directory";
+  readonly projectId: string;
   readonly dirTitle: string;
   readonly currentPath: string;
   readonly contentType: ContentType;

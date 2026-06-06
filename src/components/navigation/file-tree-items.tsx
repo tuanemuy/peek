@@ -1,4 +1,3 @@
-import { useState } from "preact/hooks";
 import type { FileTreeNode } from "../../core/file-tree.js";
 import { ChevronDownIcon, FileIcon, FolderIcon } from "../icons/index.js";
 
@@ -8,25 +7,31 @@ type FileTreeItemsProps = {
   readonly nodes: readonly FileTreeNode[];
   readonly currentPath?: string;
   readonly depth?: number;
+  readonly isOpen?: (path: string) => boolean;
+  readonly onToggle?: (path: string) => void;
 };
 
 function DirectoryItem({
   node,
   currentPath,
   depth,
+  isOpen,
+  onToggle,
 }: {
   readonly node: FileTreeNode;
   readonly currentPath?: string;
   readonly depth: number;
+  readonly isOpen?: (path: string) => boolean;
+  readonly onToggle?: (path: string) => void;
 }) {
-  const [open, setOpen] = useState(true);
+  const open = isOpen ? isOpen(node.path) : true;
 
   return (
     <li class={depth === 0 ? "px-2 lg:px-5" : ""}>
       <button
         type="button"
         aria-expanded={open}
-        onClick={() => setOpen((prev) => !prev)}
+        onClick={() => onToggle?.(node.path)}
         class="flex items-center gap-x-3 w-full py-2 px-3 text-left text-sm text-sidebar-foreground hover:bg-sidebar-accent rounded-lg overflow-hidden"
       >
         <FolderIcon class="shrink-0 size-4" />
@@ -42,6 +47,8 @@ function DirectoryItem({
               nodes={node.children}
               currentPath={currentPath}
               depth={depth + 1}
+              isOpen={isOpen}
+              onToggle={onToggle}
             />
           ) : null}
         </ul>
@@ -54,6 +61,8 @@ export function FileTreeItems({
   nodes,
   currentPath,
   depth = 0,
+  isOpen,
+  onToggle,
 }: FileTreeItemsProps) {
   return (
     <>
@@ -65,6 +74,8 @@ export function FileTreeItems({
               node={node}
               currentPath={currentPath}
               depth={depth}
+              isOpen={isOpen}
+              onToggle={onToggle}
             />
           );
         }
