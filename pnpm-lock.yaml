@@ -16,7 +16,7 @@ importers:
         version: 1.19.14(hono@4.12.10)
       '@mdit/plugin-tasklist':
         specifier: ^0.23.1
-        version: 0.23.1(markdown-it@14.1.1)
+        version: 0.23.2(markdown-it@14.1.1)
       '@shikijs/markdown-it':
         specifier: ^4.0.1
         version: 4.0.2(markdown-it-async@2.2.0)
@@ -577,8 +577,8 @@ packages:
   '@jridgewell/trace-mapping@0.3.31':
     resolution: {integrity: sha512-zzNR+SdQSDJzc8joaeP8QQoCQr8NuYx2dIIytl1QeBEZHJ9uW6hebsrYgbz8hJwUQao3TWCMtmfV8Nu1twOLAw==}
 
-  '@mdit/plugin-tasklist@0.23.1':
-    resolution: {integrity: sha512-BNhTESurLLQxydlsfdsXf+e9U746UlHFl0l/rHQH225b6aaOdo/TH0H6PIAZIjx0oV97wg72s/WHKGMejps3Rg==}
+  '@mdit/plugin-tasklist@0.23.2':
+    resolution: {integrity: sha512-9vpH3ZG2JmB3SqYfXmRXk9mI5Q6U+KO30quNH1PN5lp5gQtW4kceWhfAPeQtSMemNV4KuCyns+6PRX8zD9Sajw==}
     engines: {node: '>= 20'}
     peerDependencies:
       markdown-it: ^14.1.0
@@ -3350,7 +3350,7 @@ snapshots:
       '@jridgewell/resolve-uri': 3.1.2
       '@jridgewell/sourcemap-codec': 1.5.5
 
-  '@mdit/plugin-tasklist@0.23.1(markdown-it@14.1.1)':
+  '@mdit/plugin-tasklist@0.23.2(markdown-it@14.1.1)':
     dependencies:
       '@types/markdown-it': 14.1.2
     optionalDependencies:
