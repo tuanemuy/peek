@@ -40,10 +40,10 @@ importers:
         version: 1.1.1
       preact:
         specifier: ^10.28.4
-        version: 10.29.0
+        version: 10.29.2
       preact-render-to-string:
         specifier: ^6.6.6
-        version: 6.6.7(preact@10.29.0)
+        version: 6.6.7(preact@10.29.2)
       shiki:
         specifier: ^4.0.1
         version: 4.0.2
@@ -2413,8 +2413,8 @@ packages:
     peerDependencies:
       preact: '>=10 || >= 11.0.0-0'
 
-  preact@10.29.0:
-    resolution: {integrity: sha512-wSAGyk2bYR1c7t3SZ3jHcM6xy0lcBcDel6lODcs9ME6Th++Dx2KU+6D3HD8wMMKGA8Wpw7OMd3/4RGzYRpzwRg==}
+  preact@10.29.2:
+    resolution: {integrity: sha512-7tNmwg/7mzzAoB/8kSg6Hl37JraAZw3Z3A0JSY7VXlZwo82Xn0G7wKbNNs2qoF4ZEEsQGTwDAroNdqKs1ofJxQ==}
 
   pretty-hrtime@1.0.3:
     resolution: {integrity: sha512-66hKPCr+72mlfiSjlEB1+45IjXSqvVAIy6mocupoww4tBFE9R9IhwwUGoI4G++Tc9Aq+2rxOt0RFU6gPcrte0A==}
@@ -4986,11 +4986,11 @@ snapshots:
       picocolors: 1.1.1
       source-map-js: 1.2.1
 
-  preact-render-to-string@6.6.7(preact@10.29.0):
+  preact-render-to-string@6.6.7(preact@10.29.2):
     dependencies:
-      preact: 10.29.0
+      preact: 10.29.2
 
-  preact@10.29.0: {}
+  preact@10.29.2: {}
 
   pretty-hrtime@1.0.3: {}
 
