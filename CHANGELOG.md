@@ -1,3 +1,15 @@
+# [1.8.0](https://github.com/tuanemuy/peek/compare/v1.7.0...v1.8.0) (2026-06-07)
+
+
+### Bug Fixes
+
+* address review findings — pure toggle updater & defensive parseStore ([294ae66](https://github.com/tuanemuy/peek/commit/294ae661a8a85ff910601b22577864c999f4d15c)), closes [#001](https://github.com/tuanemuy/peek/issues/001) [#001](https://github.com/tuanemuy/peek/issues/001) [#001](https://github.com/tuanemuy/peek/issues/001) [#89](https://github.com/tuanemuy/peek/issues/89)
+
+
+### Features
+
+* persist file tree collapse state in localStorage ([197cb6e](https://github.com/tuanemuy/peek/commit/197cb6e50309d56bcffdcb11516e1bbbf911f8b4)), closes [#89](https://github.com/tuanemuy/peek/issues/89)
+
 # [1.7.0](https://github.com/tuanemuy/peek/compare/v1.6.6...v1.7.0) (2026-03-24)
 
 
