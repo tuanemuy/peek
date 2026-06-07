@@ -18,7 +18,7 @@
     "build:client": "node scripts/build-client.mjs",
     "build:favicon": "node scripts/build-favicon.mjs",
     "build": "pnpm build:css && pnpm build:client && pnpm build:favicon && tsdown",
-    "start": "node dist/index.js",
+    "start": "node dist/index.mjs",
     "lint": "biome lint",
     "lint:fix": "biome check --write",
     "format": "biome format --write",

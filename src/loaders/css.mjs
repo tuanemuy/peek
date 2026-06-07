@@ -6,8 +6,9 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
 export async function load(url, context, nextLoad) {
-  if (url.endsWith(".css")) {
-    const content = readFileSync(fileURLToPath(url), "utf-8");
+  const cleanUrl = url.split("?")[0];
+  if (cleanUrl.endsWith(".css")) {
+    const content = readFileSync(fileURLToPath(cleanUrl), "utf-8");
     return {
       format: "module",
       source: \`export default \${JSON.stringify(content)};\`,
