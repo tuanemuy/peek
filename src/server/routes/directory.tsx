@@ -13,6 +13,7 @@ import type { FileTreeCache } from "../../lib/file-tree-cache.js";
 import { logger } from "../../lib/logger.js";
 import { renderMarkdown } from "../../lib/markdown.js";
 import { isNodeError } from "../../lib/node-error.js";
+import { createProjectId } from "../../lib/project-id.js";
 import { readTextFile } from "../../lib/read-text-file.js";
 import type { ResolvedStyles } from "../../lib/styles.js";
 import { Document, renderDocument } from "../renderer/document.js";
@@ -32,6 +33,7 @@ function findFirstFile(
 }
 
 function renderDirectoryView(params: {
+  readonly projectId: string;
   readonly dirTitle: string;
   readonly fileTitle: string;
   readonly currentPath: string;
@@ -40,14 +42,23 @@ function renderDirectoryView(params: {
   readonly tree: readonly FileTreeNode[];
   readonly styles: ResolvedStyles;
 }): string {
-  const { dirTitle, fileTitle, currentPath, contentType, html, tree, styles } =
-    params;
+  const {
+    projectId,
+    dirTitle,
+    fileTitle,
+    currentPath,
+    contentType,
+    html,
+    tree,
+    styles,
+  } = params;
   return renderDocument(
     <Document
       title={fileTitle}
       styles={styles}
       initialState={{
         mode: "directory",
+        projectId,
         dirTitle,
         currentPath,
         contentType,
@@ -109,6 +120,7 @@ export function createDirectoryRoutes(
   treeCache: FileTreeCache,
 ): Hono {
   const app = new Hono();
+  const projectId = createProjectId(dirPath);
 
   app.get("/", async (c) => {
     const treeResult = await treeCache.get();
@@ -136,6 +148,7 @@ export function createDirectoryRoutes(
     const dirTitle = basename(dirPath) || dirPath;
     return c.html(
       renderDirectoryView({
+        projectId,
         dirTitle,
         fileTitle: basename(firstFile.path),
         currentPath: firstFile.path,
@@ -177,6 +190,7 @@ export function createDirectoryRoutes(
     const dirTitle = basename(dirPath) || dirPath;
     return c.html(
       renderDirectoryView({
+        projectId,
         dirTitle,
         fileTitle: basename(relativePath),
         currentPath: relativePath,

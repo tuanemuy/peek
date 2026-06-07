@@ -5,12 +5,14 @@ import { Sidebar } from "../components/navigation/sidebar.js";
 import type { ContentType } from "../core/content-type.js";
 import { getContentType } from "../core/content-type.js";
 import type { FileTreeNode } from "../core/file-tree.js";
+import { useFileTreeState } from "./hooks/use-file-tree-state.js";
 import { useNavigation } from "./hooks/use-navigation.js";
 import { useSidebar } from "./hooks/use-sidebar.js";
 import { useSseUpdates } from "./hooks/use-sse-updates.js";
 import { getFileNameFromPath } from "./lib/path-utils.js";
 
 type DirectoryAppProps = {
+  readonly projectId: string;
   readonly dirTitle: string;
   readonly currentPath: string;
   readonly contentType: ContentType;
@@ -19,6 +21,7 @@ type DirectoryAppProps = {
 };
 
 export function DirectoryApp({
+  projectId,
   dirTitle,
   currentPath: initialPath,
   contentType: initialContentType,
@@ -36,6 +39,7 @@ export function DirectoryApp({
   currentPathRef.current = currentPath;
 
   const sidebar = useSidebar();
+  const fileTree = useFileTreeState(projectId);
 
   useNavigation((path, html) => {
     const ct = getContentType(path);
@@ -69,6 +73,8 @@ export function DirectoryApp({
         tree={tree}
         currentPath={currentPath}
         onClose={sidebar.close}
+        isOpen={fileTree.isOpen}
+        onToggle={fileTree.toggle}
       />
 
       <PageHeader
