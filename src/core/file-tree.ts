@@ -45,7 +45,7 @@ function filterNodes(
   const result: FileTreeNode[] = [];
   for (const node of nodes) {
     if (node.type === "directory") {
-      // Directory name matches → keep the whole subtree (ADR-003 case A).
+      // Directory name matches → keep the whole subtree.
       if (matchesQuery(node, normalizedQuery)) {
         result.push(node);
         continue;
@@ -60,7 +60,6 @@ function filterNodes(
       }
       continue;
     }
-    // File: keep when its name matches.
     if (matchesQuery(node, normalizedQuery)) {
       result.push(node);
     }
