@@ -1,3 +1,16 @@
+# [1.9.0](https://github.com/tuanemuy/peek/compare/v1.8.0...v1.9.0) (2026-06-07)
+
+
+### Bug Fixes
+
+* dev:server の content.css?inline 読み込みと start パスを修正 ([e501370](https://github.com/tuanemuy/peek/commit/e501370e785c47a4a1e59322302e9f0395019e6a)), closes [#95](https://github.com/tuanemuy/peek/issues/95)
+* レビュー指摘対応（aria-label / Escape クリア / flex レイアウト / テスト追加） ([a4ec557](https://github.com/tuanemuy/peek/commit/a4ec5573de463b7ac21a70ac32c8657def36d5ed)), closes [#88](https://github.com/tuanemuy/peek/issues/88)
+
+
+### Features
+
+* ファイルツリーに検索（フィルタ）機能を追加 ([85a0b0f](https://github.com/tuanemuy/peek/commit/85a0b0f555054be700fbc3ef7a034ad4859bc602)), closes [#88](https://github.com/tuanemuy/peek/issues/88)
+
 # [1.8.0](https://github.com/tuanemuy/peek/compare/v1.7.0...v1.8.0) (2026-06-07)
 
 
