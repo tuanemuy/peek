@@ -19,6 +19,7 @@ function isDesktop(): boolean {
 export type SidebarActions = {
   readonly toggle: () => void;
   readonly close: () => void;
+  readonly open: () => void;
 };
 
 export function useSidebar(): SidebarActions {
@@ -138,5 +139,12 @@ export function useSidebar(): SidebarActions {
     }
   }, []);
 
-  return { toggle, close };
+  const openSidebar = useCallback(() => {
+    setOpen(true);
+    if (isDesktop()) {
+      localStorage.setItem(SIDEBAR_STATE_KEY, "true");
+    }
+  }, []);
+
+  return { toggle, close, open: openSidebar };
 }
