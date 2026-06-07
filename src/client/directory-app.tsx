@@ -1,12 +1,13 @@
-import { useRef, useState } from "preact/hooks";
+import { useMemo, useRef, useState } from "preact/hooks";
 import { ContentView } from "../components/content-view.js";
 import { PageHeader } from "../components/layout/page-header.js";
 import { Sidebar } from "../components/navigation/sidebar.js";
 import type { ContentType } from "../core/content-type.js";
 import { getContentType } from "../core/content-type.js";
-import type { FileTreeNode } from "../core/file-tree.js";
+import { type FileTreeNode, filterFileTree } from "../core/file-tree.js";
 import { useFileTreeState } from "./hooks/use-file-tree-state.js";
 import { useNavigation } from "./hooks/use-navigation.js";
+import { useSearchShortcut } from "./hooks/use-search-shortcut.js";
 import { useSidebar } from "./hooks/use-sidebar.js";
 import { useSseUpdates } from "./hooks/use-sse-updates.js";
 import { getFileNameFromPath } from "./lib/path-utils.js";
@@ -33,6 +34,7 @@ export function DirectoryApp({
     useState<ContentType>(initialContentType);
   const [content, setContent] = useState(initialContent);
   const [tree, setTree] = useState(initialTree);
+  const [searchQuery, setSearchQuery] = useState("");
   const [htmlReloadKey, setHtmlReloadKey] = useState(0);
   const currentPathRef = useRef(currentPath);
   // Direct ref assignment — no sync effect needed (Preact has no concurrent rendering)
@@ -40,6 +42,14 @@ export function DirectoryApp({
 
   const sidebar = useSidebar();
   const fileTree = useFileTreeState(projectId);
+
+  const isSearching = searchQuery.trim() !== "";
+  const filteredTree = useMemo(
+    () => filterFileTree(tree, searchQuery),
+    [tree, searchQuery],
+  );
+
+  useSearchShortcut(sidebar.open);
 
   useNavigation((path, html) => {
     const ct = getContentType(path);
@@ -70,11 +80,14 @@ export function DirectoryApp({
     <>
       <Sidebar
         title={dirTitle}
-        tree={tree}
+        tree={filteredTree}
         currentPath={currentPath}
         onClose={sidebar.close}
-        isOpen={fileTree.isOpen}
-        onToggle={fileTree.toggle}
+        isOpen={isSearching ? () => true : fileTree.isOpen}
+        onToggle={isSearching ? undefined : fileTree.toggle}
+        searchQuery={searchQuery}
+        onSearchChange={setSearchQuery}
+        isSearching={isSearching}
       />
 
       <PageHeader

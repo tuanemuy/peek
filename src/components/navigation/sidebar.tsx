@@ -8,6 +8,9 @@ type SidebarProps = {
   readonly onClose?: () => void;
   readonly isOpen?: (path: string) => boolean;
   readonly onToggle?: (path: string) => void;
+  readonly searchQuery?: string;
+  readonly onSearchChange?: (query: string) => void;
+  readonly isSearching?: boolean;
 };
 
 export function Sidebar({
@@ -17,6 +20,9 @@ export function Sidebar({
   onClose,
   isOpen,
   onToggle,
+  searchQuery,
+  onSearchChange,
+  isSearching,
 }: SidebarProps) {
   return (
     <>
@@ -44,14 +50,33 @@ export function Sidebar({
             </a>
           </header>
 
-          <div class="mt-1.5 h-full overflow-x-hidden overflow-y-auto [&::-webkit-scrollbar]:w-2 [&::-webkit-scrollbar-thumb]:rounded-none [&::-webkit-scrollbar-track]:bg-scrollbar-track [&::-webkit-scrollbar-thumb]:bg-scrollbar-thumb">
+          <div class="flex-none px-2 lg:px-5 mt-1.5 mb-1">
+            <input
+              id="sidebar-search"
+              type="search"
+              placeholder="Search files…"
+              value={searchQuery ?? ""}
+              onInput={(e) =>
+                onSearchChange?.((e.target as HTMLInputElement).value)
+              }
+              class="w-full py-1.5 px-3 text-sm text-sidebar-foreground bg-sidebar-accent border border-sidebar-border rounded-lg outline-none focus:border-sidebar-primary placeholder:text-sidebar-foreground/50"
+            />
+          </div>
+
+          <div class="h-full overflow-x-hidden overflow-y-auto [&::-webkit-scrollbar]:w-2 [&::-webkit-scrollbar-thumb]:rounded-none [&::-webkit-scrollbar-track]:bg-scrollbar-track [&::-webkit-scrollbar-thumb]:bg-scrollbar-thumb">
             <nav class="pb-3 w-full flex flex-col">
-              <FileTree
-                nodes={tree}
-                currentPath={currentPath}
-                isOpen={isOpen}
-                onToggle={onToggle}
-              />
+              {isSearching && tree.length === 0 ? (
+                <p class="px-5 py-3 text-sm text-sidebar-foreground/60">
+                  No matches found
+                </p>
+              ) : (
+                <FileTree
+                  nodes={tree}
+                  currentPath={currentPath}
+                  isOpen={isOpen}
+                  onToggle={onToggle}
+                />
+              )}
             </nav>
           </div>
         </div>
