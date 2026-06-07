@@ -41,7 +41,7 @@ export function Sidebar({
         class="fixed inset-y-0 start-0 z-60 w-72 lg:w-auto overflow-hidden bg-sidebar border-e border-sidebar-border -translate-x-full"
       >
         <div class="relative flex flex-col h-full max-h-full pt-3">
-          <header class="h-11.5 ps-5 pe-2 lg:ps-8 flex items-center">
+          <header class="flex-none h-11.5 ps-5 pe-2 lg:ps-8 flex items-center">
             <a
               href="/"
               class="flex-none text-sm font-semibold text-sidebar-foreground hover:text-sidebar-primary"
@@ -54,16 +54,23 @@ export function Sidebar({
             <input
               id="sidebar-search"
               type="search"
+              aria-label="Search files"
               placeholder="Search files…"
               value={searchQuery ?? ""}
               onInput={(e) =>
                 onSearchChange?.((e.target as HTMLInputElement).value)
               }
+              onKeyDown={(e) => {
+                if (e.key === "Escape" && !e.isComposing) {
+                  onSearchChange?.("");
+                  (e.currentTarget as HTMLInputElement).blur();
+                }
+              }}
               class="w-full py-1.5 px-3 text-sm text-sidebar-foreground bg-sidebar-accent border border-sidebar-border rounded-lg outline-none focus:border-sidebar-primary placeholder:text-sidebar-foreground/50"
             />
           </div>
 
-          <div class="h-full overflow-x-hidden overflow-y-auto [&::-webkit-scrollbar]:w-2 [&::-webkit-scrollbar-thumb]:rounded-none [&::-webkit-scrollbar-track]:bg-scrollbar-track [&::-webkit-scrollbar-thumb]:bg-scrollbar-thumb">
+          <div class="flex-1 min-h-0 overflow-x-hidden overflow-y-auto [&::-webkit-scrollbar]:w-2 [&::-webkit-scrollbar-thumb]:rounded-none [&::-webkit-scrollbar-track]:bg-scrollbar-track [&::-webkit-scrollbar-thumb]:bg-scrollbar-thumb">
             <nav class="pb-3 w-full flex flex-col">
               {isSearching && tree.length === 0 ? (
                 <p class="px-5 py-3 text-sm text-sidebar-foreground/60">

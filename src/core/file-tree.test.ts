@@ -60,7 +60,8 @@ describe("filterFileTree", () => {
   });
 
   it("keeps the whole subtree when a directory name matches (case A)", () => {
-    const result = filterFileTree(makeTree(), "api");
+    const tree = makeTree();
+    const result = filterFileTree(tree, "api");
     expect(result).toHaveLength(1);
     const docs = result[0];
     expect(docs?.path).toBe("docs");
@@ -72,6 +73,8 @@ describe("filterFileTree", () => {
       "docs/api/reference.md",
       "docs/api/overview.md",
     ]);
+    // Case A shares the matched directory node by reference (no copy).
+    expect(result[0]?.children?.[0]).toBe(tree[0]?.children?.[1]);
   });
 
   it("keeps the ancestor path when a grandchild matches", () => {
@@ -85,6 +88,17 @@ describe("filterFileTree", () => {
     expect(api?.path).toBe("docs/api");
     expect(api?.children).toHaveLength(1);
     expect(api?.children?.[0]?.path).toBe("docs/api/reference.md");
+  });
+
+  it("drops a sibling directory whose descendants do not match", () => {
+    // kept/ contains a matching file; dropped/ contains none → only kept/ remains.
+    const fixture: readonly FileTreeNode[] = [
+      dir("kept", "kept", [file("target.md", "kept/target.md")]),
+      dir("dropped", "dropped", [file("other.md", "dropped/other.md")]),
+    ];
+    const result = filterFileTree(fixture, "target");
+    expect(result.map((n) => n.path)).toEqual(["kept"]);
+    expect(result.some((n) => n.path === "dropped")).toBe(false);
   });
 
   it("returns an empty array when nothing matches", () => {

@@ -22,7 +22,10 @@ function matchesQuery(node: FileTreeNode, normalizedQuery: string): boolean {
  * its children filtered. Original ordering is preserved (no sorting).
  *
  * This function is pure (no mutation of the input) and depends only on string /
- * array operations, so it is safe to include in the client bundle.
+ * array operations, so it is safe to include in the client bundle. The returned
+ * array is always new, but when a directory name matches (case A) the input node
+ * is shared as-is, producing a partially shared new tree, so callers must not
+ * mutate the result tree in place.
  */
 export function filterFileTree(
   nodes: readonly FileTreeNode[],
