@@ -72,7 +72,7 @@
     "@tsdown/css": "^0.21.2",
     "@types/markdown-it": "^14.1.2",
     "@types/node": "^25.3.3",
-    "@typescript/native-preview": "7.0.0-dev.20260404.1",
+    "@typescript/native-preview": "7.0.0-dev.20260707.2",
     "@vitest/coverage-v8": "^4.1.1",
     "esbuild": "^0.27.3",
     "postcss": "^8.5.6",
