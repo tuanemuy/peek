@@ -204,10 +204,14 @@ grep -n "did not close within\|Received SIG" /tmp/peek-102.log
   2. ブラウザで `http://localhost:3009` を開き `/sse` を pending にする。
   3. `Ctrl+C` を 1 回押す（`tee` にも SIGINT が届き先に死ぬ）。
   4. `/tmp/peek-shutdown.log` の中身と、パイプライン全体の exit code を確認する。
+  5. 手順 3 の代わりに、`tee` を生かしたまま **peek の PID にだけ** `kill -INT` を送る条件でも確認する。
 - **期待結果:**
-  - `Shutting down...` と `Server stopped. Bye!` がログに残っている（短い出力は `process.exit(0)` 直前でも欠落しない）。
-  - peek 自体が uncaught EPIPE で落ちない。
-- **確認ポイント:** パイプライン経由なので `$?` は `tee` の終了状態になる点に注意。peek 自身の exit code を厳密に見たいときは項目 1 のリダイレクトなしの手順を使う。
+  - **手順 3（パイプライン全体に SIGINT）では、シャットダウンの出力はログに残らない。** `tee` が SIGINT で先に死に、読み手を失った peek の書き込みが行き先を失うため、ログには起動時のバナーだけが残る。**これは POSIX パイプの意味論であって peek の欠陥ではないので FAIL としない。**
+  - **手順 5（peek にだけ SIGINT）では `Shutting down...` と `Server stopped. Bye!` がログに残る**（短い出力は `process.exit(0)` 直前でも欠落しない）。「欠落しない」ことを確認したいときはこちらを使う。
+  - どちらの条件でも peek 自体が uncaught EPIPE で落ちず、ハングしない。
+- **確認ポイント:**
+  - パイプライン経由なので `$?` は `tee` の終了状態（SIGINT なら 130）になる点に注意。**peek 自身の exit code はこの形態では取得できない。** 厳密に見たいときは項目 1 のリダイレクトなしの手順を使うか、`mkfifo` で peek の PID を直接握る。
+  - ADR-007 の本丸を突くなら、**パイプの読み手を先に `kill -9` して確実に broken pipe にしてから** SIGINT を送る。drain を入れていれば uncaught EPIPE で exit 1 になる条件であり、ここで exit 0 のままなら不採用の判断が正しかったことになる。
 
 ### 3. SIGTERM で終了する
 
