@@ -1,3 +1,4 @@
+import { EventEmitter } from "node:events";
 import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
@@ -101,8 +102,17 @@ describe("startServer / shutdown lifecycle", () => {
     const port = await getFreePort();
     server = await startServer({ ...baseConfig, port });
 
-    // The listener is closed before the first `await` inside shutdown().
     const shutting = server.shutdown();
+    // Attach a handler right away: nothing else observes `shutting` until the
+    // `await` below, and `shutdown()` does propagate rejections (`withTimeout`
+    // passes them through), which would surface as an unhandled rejection.
+    // The `await` still re-throws, so a failure is not swallowed.
+    shutting.catch(() => {});
+    // End-to-end half of AC-4: a connection attempted after `shutdown()`
+    // returned is refused. This says nothing about *when* inside `shutdown()`
+    // the listener closed — `fetch()` only reaches TCP connect some
+    // milliseconds later. The "before the first `await`" half is pinned down
+    // synchronously by the ADR-002 ordering test below.
     await expect(fetch(`http://localhost:${port}/`)).rejects.toThrow();
     await shutting;
     server = undefined;
@@ -110,12 +120,15 @@ describe("startServer / shutdown lifecycle", () => {
 
   it("warns when the server does not close within the budget", async () => {
     const port = await getFreePort();
-    server = await startServer({ ...baseConfig, port });
+    server = await startServer(
+      { ...baseConfig, port },
+      { shutdownTimeoutMs: 0 },
+    );
 
     const sse = await fetch(`http://localhost:${port}/sse`);
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     try {
-      await server.shutdown({ timeoutMs: 0 });
+      await server.shutdown();
       expect(warn).toHaveBeenCalledTimes(1);
       expect(warn.mock.calls[0]?.join(" ")).toContain("did not close within");
     } finally {
@@ -139,5 +152,52 @@ describe("startServer / shutdown lifecycle", () => {
       await sse.body?.cancel().catch(() => {});
     }
     server = undefined;
+  });
+});
+
+/**
+ * Regression guard for the step order of ADR-002: `server.close()` runs first,
+ * `closeAllConnections()` after it, and both before `shutdown()` yields.
+ *
+ * Steps 1-4 are all synchronous, so no black-box observation through a real
+ * socket can tell the two orders apart; stubbing `serve()` is what makes the
+ * order observable at all. Moving `const closing = close()` back below
+ * `closeAllConnections()` flips the recorded array and fails here.
+ */
+describe("shutdown step order", () => {
+  it("closes the listener before destroying live connections, both before yielding", async () => {
+    const calls: string[] = [];
+
+    vi.resetModules();
+    vi.doMock("@hono/node-server", () => ({
+      serve: () => {
+        const server = new EventEmitter();
+        setTimeout(() => server.emit("listening"), 0);
+        return Object.assign(server, {
+          close(cb?: (err?: Error) => void) {
+            calls.push("close");
+            cb?.();
+          },
+          closeAllConnections() {
+            calls.push("closeAllConnections");
+          },
+        });
+      },
+    }));
+
+    try {
+      const { startServer } = await import("./index.js");
+      const instance = await startServer({ ...baseConfig, port: 0 });
+
+      const shutting = instance.shutdown();
+      shutting.catch(() => {});
+      // Read before awaiting: anything recorded here happened before the first
+      // `await` inside `shutdown()`, which is the contract AC-4 states.
+      expect(calls).toEqual(["close", "closeAllConnections"]);
+      await shutting;
+    } finally {
+      vi.doUnmock("@hono/node-server");
+      vi.resetModules();
+    }
   });
 });

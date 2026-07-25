@@ -1,9 +1,9 @@
 /**
  * Bounded waiting for a promise.
  *
- * Lives in `src/lib/` rather than `src/core/` because it schedules a timer,
- * which is a side effect; `src/core/` is reserved for pure logic, types and
- * constants.
+ * Lives in `src/lib/` rather than `src/core/` because `src/core/` is imported
+ * from `src/client/**` and therefore ends up in the client bundle; this helper
+ * is only ever used by the server.
  */
 
 export type TimeoutOutcome<T> =
@@ -13,27 +13,19 @@ export type TimeoutOutcome<T> =
 /**
  * Waits for `promise` for at most `timeoutMs`.
  *
- * - Resolves with `{ status: "completed", value }` when `promise` fulfills in time.
- * - Resolves with `{ status: "timed-out" }` when the budget elapses first.
- * - Rejections of `promise` are passed through as rejections (so a failing
- *   `server.close()` still reaches the caller's error handling).
+ * - `{ status: "completed", value }` — `promise` fulfilled inside the budget.
+ * - `{ status: "timed-out" }` — the budget elapsed first.
+ * - Rejects only when `promise` rejects *inside* the budget. A rejection after
+ *   the budget elapsed (or under a zero budget) is subscribed to so that it is
+ *   never unhandled, but it is discarded — nothing reports it.
  *
  * A zero budget (`!(timeoutMs > 0)`, which also covers `NaN`) means "always
- * timed out": the result is `{ status: "timed-out" }` regardless of how or when
- * `promise` settles. This is what makes the timeout branch (and its warning log)
- * deterministically testable — racing against `setTimeout(0)` cannot do that,
- * because a `server.close()` callback always runs before a `setTimeout(0)`
- * macrotask. Callers that expect `withTimeout(p, 0)` to mean "check for an
- * already-completed promise" would be surprised; the only caller is
- * `shutdown()`, whose default budget is `SHUTDOWN_TIMEOUT_MS`.
- * (Implementation note: the zero-budget branch resolves synchronously inside the
- * executor, but delivery to `await` is always via a microtask, so callers cannot
- * observe a difference in synchrony.)
+ * timed out", whatever `promise` does. That is what makes the timeout branch
+ * deterministically testable.
  *
- * The timer is cleared once either side settles, and it is deliberately **not**
- * `unref()`-ed: an unref-ed timer never fires when nothing else keeps the event
- * loop alive, which would silently skip the timeout branch (and its warning);
- * `clearTimeout` alone is what prevents the timer from delaying teardown.
+ * The timer is deliberately **not** `unref()`-ed: an unref-ed timer never fires
+ * when nothing else keeps the event loop alive, which would silently skip the
+ * timeout branch and its warning. See `.issue/102/adr.md` ADR-001.
  */
 export function withTimeout<T>(
   promise: Promise<T>,

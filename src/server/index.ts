@@ -1,5 +1,3 @@
-import type { Server as HttpServer } from "node:http";
-import type { ServerType } from "@hono/node-server";
 import { serve } from "@hono/node-server";
 import { Hono } from "hono";
 import type { FileTreeCache } from "../lib/file-tree-cache.js";
@@ -42,19 +40,25 @@ export type ServerConfig =
       readonly styles: ResolvedStyles;
     };
 
-export type ServerInstance = {
-  readonly watcher: FileWatcherHandle;
+export type StartServerOptions = {
   /**
-   * Stops everything: SSE streams, the file watcher and the HTTP server.
-   *
-   * Memoized — the first call wins, so `timeoutMs` is ignored on later calls.
-   * Always settles within `timeoutMs` (default `SHUTDOWN_TIMEOUT_MS`). When the
-   * budget elapses, sockets may still be alive; ending the process is the
-   * caller's (the CLI's) responsibility.
+   * Upper bound for waiting on `server.close()` inside `shutdown()`.
+   * Defaults to `SHUTDOWN_TIMEOUT_MS`.
    */
-  readonly shutdown: (options?: {
-    readonly timeoutMs?: number;
-  }) => Promise<void>;
+  readonly shutdownTimeoutMs?: number;
+};
+
+export type ServerInstance = {
+  /**
+   * Stops everything: the HTTP listener, SSE streams and the file watcher.
+   * Idempotent — later calls return the promise of the first one.
+   *
+   * Always settles within the shutdown budget (see
+   * `StartServerOptions.shutdownTimeoutMs`). When that budget elapses, sockets
+   * may still be alive; ending the process is the caller's (the CLI's)
+   * responsibility.
+   */
+  readonly shutdown: () => Promise<void>;
 };
 
 /**
@@ -64,15 +68,6 @@ export type ServerInstance = {
  * warn on healthy shutdowns.
  */
 const SHUTDOWN_TIMEOUT_MS = 2_000;
-
-/**
- * `serve()` returns `ServerType` (http.Server | Http2Server | Http2SecureServer);
- * `closeAllConnections` / `closeIdleConnections` exist only on `http.Server`.
- * peek always creates a plain HTTP server, so this narrows to that branch.
- */
-function isHttpServer(server: ServerType): server is HttpServer {
-  return "closeAllConnections" in server;
-}
 
 type AppContext =
   | {
@@ -157,7 +152,9 @@ function setupWatcher(ctx: AppContext, sse: SseManager): FileWatcherHandle {
 
 export async function startServer(
   config: ServerConfig,
+  options?: StartServerOptions,
 ): Promise<ServerInstance> {
+  const shutdownTimeoutMs = options?.shutdownTimeoutMs ?? SHUTDOWN_TIMEOUT_MS;
   const sse = createSseManager();
 
   const ctx: AppContext =
@@ -214,36 +211,62 @@ export async function startServer(
     });
     return closePromise;
   };
+  const runShutdown = async (): Promise<void> => {
+    // 1. Stop the listener first. Every step below can make a browser
+    //    reconnect — aborting an SSE stream and destroying a socket both fire
+    //    `onerror` in the client — and once the listener is gone those attempts
+    //    fail at the TCP level. Going first also keeps `closing` reachable when
+    //    a later step throws.
+    const closing = close();
+    // Steps 2-4 are isolated from step 5: whatever fails there, the wait on
+    // `closing` still has to happen (and stay bounded), or shutdown() could
+    // hang on the very thing it exists to end. The failure is rethrown after.
+    let failure: { readonly error: unknown } | undefined;
+    try {
+      // 2. Refuse new /sse requests and abort the streams already running.
+      sse.shutdown();
+      // 3. No further file events, hence no further broadcasts.
+      watcher.close();
+      // 4. Destroy the sockets that are still active. `server.close()` takes
+      //    care of the idle keep-alive ones itself (Node >= 19 calls
+      //    `closeIdleConnections()` from within `close()`), but it would wait
+      //    forever on the in-flight SSE responses.
+      //    `serve()` returns `ServerType` (http.Server | Http2Server |
+      //    Http2SecureServer) and only `http.Server` has this method, so the
+      //    union has to be narrowed; peek always creates a plain HTTP server.
+      if ("closeAllConnections" in server) {
+        server.closeAllConnections();
+      }
+    } catch (error) {
+      failure = { error };
+    }
+    // 5. Wait, but never indefinitely — the root cause of the reported hang is
+    //    unknown, so a bounded wait is what guarantees termination.
+    const outcome = await withTimeout(closing, shutdownTimeoutMs);
+    if (outcome.status === "timed-out") {
+      logger.warn(
+        `HTTP server did not close within ${shutdownTimeoutMs}ms — giving up and leaving the remaining sockets to the caller.`,
+      );
+    }
+    if (failure) {
+      throw failure.error;
+    }
+  };
+
   let shutdownPromise: Promise<void> | undefined;
 
   return {
-    watcher,
-    shutdown(options) {
+    shutdown() {
       if (shutdownPromise) return shutdownPromise;
-      const timeoutMs = options?.timeoutMs ?? SHUTDOWN_TIMEOUT_MS;
-      shutdownPromise = (async () => {
-        // 1. Refuse new /sse requests and abort the streams already running.
-        sse.shutdown();
-        // 2. Stop the listener before anything that could trigger a reconnect,
-        //    so a browser reacting to step 4 can never be accepted again.
-        const closing = close();
-        // 3. No further file events, hence no further broadcasts.
-        watcher.close();
-        // 4. Destroy every remaining socket (active and idle). Without this,
-        //    keep-alive sockets stay open and `server.close()` waits forever.
-        if (isHttpServer(server)) {
-          server.closeAllConnections();
-        }
-        // 5. Wait, but never indefinitely — the root cause of the reported hang
-        //    is unknown, so a bounded wait is what guarantees termination.
-        const outcome = await withTimeout(closing, timeoutMs);
-        if (outcome.status === "timed-out") {
-          logger.warn(
-            `HTTP server did not close within ${timeoutMs}ms — giving up and leaving the remaining sockets to the caller.`,
-          );
-        }
-      })();
-      return shutdownPromise;
+      // Publish the memo *before* running any step. `shutdownPromise =
+      // runShutdown()` would only be assigned once `runShutdown()` reached its
+      // first `await`, leaving the re-entrancy guard open for the whole
+      // synchronous part — exactly the kind of "safe because it happens to be
+      // synchronous" that this shutdown path is meant to stop relying on.
+      const { promise, resolve, reject } = Promise.withResolvers<void>();
+      shutdownPromise = promise;
+      runShutdown().then(resolve, reject);
+      return promise;
     },
   };
 }

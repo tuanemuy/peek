@@ -10,7 +10,11 @@ export type SSEClient = {
 export type SseManager = {
   readonly app: Hono;
   readonly broadcast: (event: string, data: string) => void;
-  /** Terminal operation — see `createSseManager()`. */
+  /**
+   * Terminates the SSE subsystem only, unlike `ServerInstance.shutdown()` which
+   * stops the whole server and calls this as one of its steps. Afterwards
+   * `/sse` answers 503, `broadcast()` is a no-op, and there is no way back.
+   */
   readonly shutdown: () => void;
   readonly clientCount: number;
 };
@@ -28,11 +32,9 @@ export function createSseManager(): SseManager {
   }
 
   /**
-   * Terminal operation: refuses new `/sse` connections and closes every open
-   * one. Raising the flag *before* walking `clients` is what makes this
-   * race-free against a request that is registering itself concurrently (see
-   * the handler below). Afterwards `broadcast()` is a no-op — the set is empty
-   * and no client can be added again.
+   * Refuses new `/sse` connections and closes every open one. Raising the flag
+   * *before* walking `clients` is what makes this race-free against a request
+   * that is registering itself concurrently (see the handler below).
    */
   function shutdown(): void {
     shuttingDown = true;
@@ -70,14 +72,22 @@ export function createSseManager(): SseManager {
         close: cleanup,
       };
 
-      clients.add(client);
+      // Subscribe before publishing: `StreamingApi.abort()` only notifies the
+      // handlers registered at that moment, so an abort landing between the two
+      // would otherwise leave this client in `clients` forever.
       stream.onAbort(cleanup);
+      clients.add(client);
 
       // ② Re-check after publishing ourselves. Together with "raise the flag,
       // then walk the set" in shutdown(), neither order can lose a client:
       // whichever synchronous block runs first, the other one sees its effect.
-      // Falling into this branch yields HTTP 200 + text/event-stream + an
-      // immediate EOF (the response was already handed back), not the 503 of ①.
+      // Unreachable today — Hono runs this callback synchronously up to the
+      // first `await`, so it cannot interleave with shutdown(). It is kept so
+      // the guarantee survives an `await` appearing before `clients.add()`,
+      // e.g. if Hono's dispatch becomes asynchronous. Taking this branch yields
+      // HTTP 200 + text/event-stream + an immediate EOF rather than the 503 of
+      // ①: `streamSSE` fixes status and headers itself, so all that is left to
+      // do here is end the stream.
       if (shuttingDown) {
         cleanup();
         return;

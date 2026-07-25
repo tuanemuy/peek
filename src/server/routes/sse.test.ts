@@ -168,18 +168,21 @@ describe("SSE keep-alive", () => {
       // Without this, Hono's TransformStream buffers a single write and
       // back-pressure parks the loop after one round, hiding a linear leak.
       const reader = res.body?.getReader();
-      if (reader) {
-        void (async () => {
-          try {
-            while (true) {
-              const { done } = await reader.read();
-              if (done) break;
-            }
-          } catch {
-            // Stream closed — nothing to drain anymore.
+      // Fail fast rather than silently skipping the drain: without it the test
+      // degrades to the weaker pre-drain form (max 2 instead of 1) and can even
+      // go false-green if Hono's buffering changes.
+      if (!reader)
+        throw new Error("No reader — the drain gives this its margin");
+      void (async () => {
+        try {
+          while (true) {
+            const { done } = await reader.read();
+            if (done) break;
           }
-        })();
-      }
+        } catch {
+          // Stream closed — nothing to drain anymore.
+        }
+      })();
 
       const counts: number[] = [];
       for (let i = 0; i < 5; i++) {
