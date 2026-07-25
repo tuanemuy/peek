@@ -54,7 +54,7 @@
     "@hono/node-server": "^1.19.9",
     "@mdit/plugin-tasklist": "^0.23.1",
     "@shikijs/markdown-it": "^4.0.1",
-    "gunshi": "^0.29.2",
+    "gunshi": "^0.37.0",
     "hono": "^4.12.3",
     "ignore": "^7.0.5",
     "markdown-it": "^14.1.1",
