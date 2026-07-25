@@ -8,10 +8,24 @@ import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
 import { join } from "node:path";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 
 const repoRoot = join(import.meta.dirname, "..");
 const fixtureDir = join(import.meta.dirname, "__test_shutdown_fixture__");
+
+/**
+ * Every budget below has to stay well under `testTimeout` (30s in
+ * `vitest.config.ts`), because vitest firing first would abandon the test body
+ * — including the `finally` that kills the child. Worst case here is
+ * 10s (+1s in-flight fetch +150ms poll) + 5s + 5s ≈ 21.2s.
+ *
+ * Measured locally: startup 300-500ms, SIGINT to exit 5-7ms. The margins are
+ * for the CI runners (ubuntu-latest x Node 22/24), where `tsx` transpiling the
+ * whole entry graph dominates startup.
+ */
+const STARTUP_TIMEOUT_MS = 10_000;
+const SSE_CONNECT_TIMEOUT_MS = 5_000;
+const EXIT_TIMEOUT_MS = 5_000;
 
 // Duplicated from `server/index.test.ts` on purpose — extracting a shared
 // helper is out of scope for this change.
@@ -81,6 +95,22 @@ afterAll(() => {
   rmSync(fixtureDir, { recursive: true, force: true });
 });
 
+/**
+ * Second line of defence for the spawned child. The test body's own `finally`
+ * is the fast path, but it does not run if vitest aborts the test (an
+ * unexpected hang, or a `testTimeout` lowered later on); hooks still do.
+ * Measured with `--testTimeout=3000` against a `peek` that never shuts down:
+ * without this hook the child outlives vitest and keeps holding the port.
+ */
+let spawned: ChildProcess | undefined;
+
+afterEach(() => {
+  if (spawned && spawned.exitCode === null && spawned.signalCode === null) {
+    spawned.kill("SIGKILL");
+  }
+  spawned = undefined;
+});
+
 describe("peek CLI shutdown", () => {
   it("exits with code 0 within 5 seconds after a single SIGINT while an SSE client is connected", async () => {
     const port = await getFreePort();
@@ -99,6 +129,7 @@ describe("peek CLI shutdown", () => {
       ],
       { cwd: repoRoot, stdio: ["ignore", "pipe", "pipe"] },
     );
+    spawned = child;
 
     let output = "";
     child.stdout?.on("data", (chunk: Buffer) => {
@@ -111,16 +142,21 @@ describe("peek CLI shutdown", () => {
     let sse: Response | undefined;
     let killTimer: NodeJS.Timeout | undefined;
     try {
-      await waitForServer(child, port, 20_000, () => output);
+      await waitForServer(child, port, STARTUP_TIMEOUT_MS, () => output);
 
-      sse = await fetch(`http://localhost:${port}/sse`);
+      // Bounded like the polls above: a `/sse` that accepts the socket but
+      // never sends headers would otherwise park here until vitest gives up,
+      // losing every diagnostic below.
+      sse = await fetch(`http://localhost:${port}/sse`, {
+        signal: AbortSignal.timeout(SSE_CONNECT_TIMEOUT_MS),
+      });
       expect(sse.status).toBe(200);
 
       const closed = new Promise<number | null>((resolve) => {
         child.once("close", (code) => resolve(code));
       });
       const timedOut = new Promise<"timed-out">((resolve) => {
-        killTimer = setTimeout(() => resolve("timed-out"), 10_000);
+        killTimer = setTimeout(() => resolve("timed-out"), EXIT_TIMEOUT_MS);
       });
 
       const startedAt = Date.now();

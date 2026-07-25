@@ -42,8 +42,9 @@ export type ServerConfig =
 
 export type StartServerOptions = {
   /**
-   * Upper bound for waiting on `server.close()` inside `shutdown()`.
-   * Defaults to `SHUTDOWN_TIMEOUT_MS`.
+   * Upper bound (ms) for waiting on `server.close()` inside `shutdown()`.
+   * Defaults to 2,000ms. A non-positive value (or `NaN`) means "give up
+   * immediately and warn" — it does *not* mean "wait forever".
    */
   readonly shutdownTimeoutMs?: number;
 };
@@ -62,10 +63,9 @@ export type ServerInstance = {
 };
 
 /**
- * Upper bound for waiting on `server.close()`. Normally it resolves within a
- * tick after `closeAllConnections()`, so this is mostly margin for slow
- * environments — short enough to keep Ctrl+C responsive, long enough not to
- * warn on healthy shutdowns.
+ * `server.close()` normally resolves a tick after `closeAllConnections()`, so
+ * this is mostly margin for slow environments: long enough not to warn on
+ * healthy shutdowns, short enough to keep Ctrl+C responsive.
  */
 const SHUTDOWN_TIMEOUT_MS = 2_000;
 
@@ -211,45 +211,57 @@ export async function startServer(
     });
     return closePromise;
   };
+  // The order of the steps below matters, and each one runs even if an earlier
+  // one throws: skipping a step costs either termination speed or the bounded
+  // wait itself. Failures are collected so none of them is lost to another.
   const runShutdown = async (): Promise<void> => {
-    // 1. Stop the listener first. Every step below can make a browser
-    //    reconnect — aborting an SSE stream and destroying a socket both fire
-    //    `onerror` in the client — and once the listener is gone those attempts
-    //    fail at the TCP level. Going first also keeps `closing` reachable when
-    //    a later step throws.
+    const failures: unknown[] = [];
+    const step = (run: () => void) => {
+      try {
+        run();
+      } catch (error) {
+        failures.push(error);
+      }
+    };
+
+    // 1. Stop the listener first: every step below can make a browser
+    //    reconnect (both an aborted SSE stream and a destroyed socket fire
+    //    `onerror`), and once the listener is gone those attempts fail at the
+    //    TCP level.
     const closing = close();
-    // Steps 2-4 are isolated from step 5: whatever fails there, the wait on
-    // `closing` still has to happen (and stay bounded), or shutdown() could
-    // hang on the very thing it exists to end. The failure is rethrown after.
-    let failure: { readonly error: unknown } | undefined;
-    try {
-      // 2. Refuse new /sse requests and abort the streams already running.
-      sse.shutdown();
-      // 3. No further file events, hence no further broadcasts.
-      watcher.close();
-      // 4. Destroy the sockets that are still active. `server.close()` takes
-      //    care of the idle keep-alive ones itself (Node >= 19 calls
-      //    `closeIdleConnections()` from within `close()`), but it would wait
-      //    forever on the in-flight SSE responses.
-      //    `serve()` returns `ServerType` (http.Server | Http2Server |
-      //    Http2SecureServer) and only `http.Server` has this method, so the
-      //    union has to be narrowed; peek always creates a plain HTTP server.
+    // 2. Refuse new /sse requests and abort the streams already running.
+    step(() => sse.shutdown());
+    // 3. No further file events, hence no further broadcasts.
+    step(() => watcher.close());
+    // 4. Destroy the sockets that are still active — skip this and step 5
+    //    burns its whole budget. The idle keep-alive ones need no help (Node
+    //    >= 19 calls `closeIdleConnections()` from within `close()`), but
+    //    `close()` would wait forever on the in-flight SSE responses.
+    //    Only `http.Server` has this method, and `serve()` returns a union
+    //    with Http2; peek always creates a plain HTTP server.
+    step(() => {
       if ("closeAllConnections" in server) {
         server.closeAllConnections();
       }
-    } catch (error) {
-      failure = { error };
-    }
+    });
     // 5. Wait, but never indefinitely — the root cause of the reported hang is
     //    unknown, so a bounded wait is what guarantees termination.
-    const outcome = await withTimeout(closing, shutdownTimeoutMs);
-    if (outcome.status === "timed-out") {
-      logger.warn(
-        `HTTP server did not close within ${shutdownTimeoutMs}ms — giving up and leaving the remaining sockets to the caller.`,
-      );
+    try {
+      const outcome = await withTimeout(closing, shutdownTimeoutMs);
+      if (outcome.status === "timed-out") {
+        logger.warn(
+          `HTTP server did not close within ${shutdownTimeoutMs}ms — giving up and leaving the remaining sockets to the caller.`,
+        );
+      }
+    } catch (error) {
+      failures.push(error);
     }
-    if (failure) {
-      throw failure.error;
+
+    if (failures.length === 1) {
+      throw failures[0];
+    }
+    if (failures.length > 1) {
+      throw new AggregateError(failures, "Failed to shut down the server.");
     }
   };
 
@@ -258,11 +270,9 @@ export async function startServer(
   return {
     shutdown() {
       if (shutdownPromise) return shutdownPromise;
-      // Publish the memo *before* running any step. `shutdownPromise =
-      // runShutdown()` would only be assigned once `runShutdown()` reached its
-      // first `await`, leaving the re-entrancy guard open for the whole
-      // synchronous part — exactly the kind of "safe because it happens to be
-      // synchronous" that this shutdown path is meant to stop relying on.
+      // Publish the memo *before* running any step: `shutdownPromise =
+      // runShutdown()` would only be assigned once `runShutdown()` yields,
+      // leaving the guard open for its whole synchronous part.
       const { promise, resolve, reject } = Promise.withResolvers<void>();
       shutdownPromise = promise;
       runShutdown().then(resolve, reject);

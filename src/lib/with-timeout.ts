@@ -1,9 +1,7 @@
 /**
  * Bounded waiting for a promise.
  *
- * Lives in `src/lib/` rather than `src/core/` because `src/core/` is imported
- * from `src/client/**` and therefore ends up in the client bundle; this helper
- * is only ever used by the server.
+ * Why `src/lib/` and not `src/core/`: see `.issue/102/adr.md` ADR-001.
  */
 
 export type TimeoutOutcome<T> =

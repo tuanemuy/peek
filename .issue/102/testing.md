@@ -20,7 +20,7 @@ pnpm build
 node dist/index.mjs . --host 0.0.0.0 --port 3009
 ```
 
-- `pnpm build` は `package.json` の `scripts.build`（`build:css && build:client && build:favicon && tsdown`）。実行確認済み（`dist/index.mjs` 128.39 kB が生成される）。
+- `pnpm build` は `package.json` の `scripts.build`（`build:css && build:client && build:favicon && tsdown`）。実行確認済み（`dist/index.mjs` が生成される）。**生成サイズは変更のたびに動くので確認項目にしない。**
 - `dist/index.mjs` は `package.json` の `bin.peek` の実体そのものなので、Issue の再現条件 `peek . --host 0.0.0.0 --port 3009` と**同一の実行形態**になる。
 - `node` を直接呼ぶため **peek は単一プロセス**で、Ctrl+C / exit code をそのまま観測できる。実行確認済み（起動 → `GET /` が 200 → SIGINT → `Server stopped. Bye!` → exit code 0）。
 
@@ -235,8 +235,8 @@ grep -n "did not close within\|Received SIG" /tmp/peek-102.log
 
 ## 既存機能への影響確認
 
-- **ライブリロード（SSE のブロードキャスト経路）:** ステップ 6 で `/sse` ハンドラに 503 の早期拒否と登録直後の再チェックが入り、keep-alive の待機実装も差し替わる。**シャットダウンしていない通常時に SSE が壊れていないこと**を確認する: 起動してブラウザで開いた状態のまま、対象ディレクトリ配下の Markdown を編集して保存し、ブラウザが自動更新されること。ファイルの追加・削除でファイルツリーが更新されること。HTML ファイルモードでも同様に確認する。
+- **ライブリロード（SSE のブロードキャスト経路）:** ステップ 6 で `/sse` ハンドラに 503 の早期拒否と登録直後の再チェックが入り、`stream.onAbort()` の登録順序（`clients.add()` より前）と keep-alive の待機実装も変わる。**シャットダウンしていない通常時に SSE が壊れていないこと**を確認する: 起動してブラウザで開いた状態のまま、対象ディレクトリ配下の Markdown を編集して保存し、ブラウザが自動更新されること。ファイルの追加・削除でファイルツリーが更新されること。HTML ファイルモードでも同様に確認する。
 - **`--port` 衝突時の起動失敗（listen エラー時のクリーンアップ経路）:** ステップ 6 の `closeAll` → `shutdown` 改名は listen エラー時のクリーンアップ呼び出しにも波及する。同じポートで 2 つ目の peek を起動し、`Port 3009 is already in use` が表示されて exit code 1 で終了すること、そのプロセスがハングして残らないことを確認する。
-- **連続起動でのポート再利用:** タイムアウトで打ち切った場合でもリスニングハンドルは手順 2 の時点で閉じている（＝ポートは解放済み）という設計上の主張の実機確認。Ctrl+C で終了した直後（1 秒以内）に同じ `--port 3009` で再起動でき、`EADDRINUSE` にならないこと。項目 1 の 10 回試行を連続で回す過程で自然に確認できる。
+- **連続起動でのポート再利用:** タイムアウトで打ち切った場合でもリスニングハンドルは手順 1（シャットダウンの最初の操作 = `server.close()`）の時点で閉じている（＝ポートは解放済み）という設計上の主張の実機確認。Ctrl+C で終了した直後（1 秒以内）に同じ `--port 3009` で再起動でき、`EADDRINUSE` にならないこと。項目 1 の 10 回試行を連続で回す過程で自然に確認できる。
 - **通常の閲覧機能（ディレクトリブラウズ / ファイルツリーの開閉 / テーマ切替 / シンタックスハイライト）:** 本 Issue はシャットダウン経路の変更だが、`sse.ts` と `server/index.ts` を触るため念のため一通り操作して回帰が無いことを確認する。
 - **`pnpm test` / `pnpm typecheck` / `pnpm lint:fix` / `pnpm format`:** CLAUDE.md の Code Quality 手順として実施する（自動テスト側の回帰確認）。

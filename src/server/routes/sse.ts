@@ -73,21 +73,20 @@ export function createSseManager(): SseManager {
       };
 
       // Subscribe before publishing: `StreamingApi.abort()` only notifies the
-      // handlers registered at that moment, so an abort landing between the two
-      // would otherwise leave this client in `clients` forever.
+      // listeners registered at that moment and latches `aborted`, so a later
+      // `onAbort()` never fires. Publishing is then skipped if cleanup already
+      // ran, or `clients.delete()` would have missed and left a dead client in
+      // the set forever.
       stream.onAbort(cleanup);
-      clients.add(client);
+      if (!closed) {
+        clients.add(client);
+      }
 
-      // ② Re-check after publishing ourselves. Together with "raise the flag,
-      // then walk the set" in shutdown(), neither order can lose a client:
-      // whichever synchronous block runs first, the other one sees its effect.
-      // Unreachable today — Hono runs this callback synchronously up to the
-      // first `await`, so it cannot interleave with shutdown(). It is kept so
-      // the guarantee survives an `await` appearing before `clients.add()`,
-      // e.g. if Hono's dispatch becomes asynchronous. Taking this branch yields
-      // HTTP 200 + text/event-stream + an immediate EOF rather than the 503 of
-      // ①: `streamSSE` fixes status and headers itself, so all that is left to
-      // do here is end the stream.
+      // ② Re-check after publishing ourselves. `shutdown()` raises the flag
+      // before walking the set, so whichever synchronous block runs first, the
+      // other one sees its effect. Unreachable today — Hono runs this callback
+      // synchronously up to the first `await` — and kept so the guarantee
+      // survives an `await` appearing above. See `.issue/102/adr.md` ADR-003.
       if (shuttingDown) {
         cleanup();
         return;

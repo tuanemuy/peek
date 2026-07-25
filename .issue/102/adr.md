@@ -3,7 +3,7 @@
 ## ADR-001: 構造的レース対策とタイムアウトの二層構成（どちらが主か）
 
 ### Status
-Proposed（レビュー 1 周目で「reject 透過の範囲」と「`src/lib/` 配置の根拠」を改訂）
+Proposed（「reject 透過の範囲」と「`src/lib/` 配置の根拠」をレビューで改訂）
 
 ### Context
 
@@ -44,18 +44,18 @@ Issue には 3 つの修正案が挙がっている。
 
 タイムアウト機構は `src/lib/with-timeout.ts` に純粋ユーティリティとして切り出す。理由は **テスト可能性**: 実サーバーでは「close が永久に解決しない」状況を作れないため、この関数の単体テストが「必ず有限時間で settle する」ことを検証できる唯一の場所になる。返り値は `Result<T, E>` ではなく専用の判別可能ユニオン `TimeoutOutcome<T>` とする（`TypedError` は `cause: Error` を必須とするが、タイムアウトには自然な `cause` が無く、そもそも「エラー」ではなく期待される分岐だから）。
 
-**元 Promise の reject の透過は「予算内に reject した場合のみ」である（レビュー 1 周目で記述を改訂）。** 1 周目のレビュー（アーキ W-001）が指摘したとおり、当初の「reject は透過させ、既存挙動を維持する」という記述は不正確だった。実際には次の 3 帰結になる。
+**元 Promise の reject の透過は「予算内に reject した場合のみ」である（記述を改訂）。** 当初の「reject は透過させ、既存挙動を維持する」という記述は不正確だった。実際には次の 3 帰結になる。
 
 1. 予算内に fulfill → `{ status: "completed", value }`。
 2. 予算内に reject → **その reject を透過する**（`server.close()` のエラーが CLI の `logger.error` に届く既存挙動はここで維持される）。
 3. 予算超過後の reject／予算ゼロ経路の reject → **購読はするが破棄される**。outer promise は既に settle 済みなので、どこにもログを残さない。
 
-3 の経路を無くすには `TimeoutOutcome<T>` に `{ status: "failed"; error }` を足す案もあるが、`close()` の memo 化により `ERR_SERVER_NOT_RUNNING` が起きず到達可能性が極めて低いこと、および 3 分岐を `shutdown()` 側で扱うと打ち切り後の後始末という別の判断を呼び込むことから、**実装は変えず doc コメントの記述を事実に合わせる**にとどめる。
+3 の経路を無くすには `TimeoutOutcome<T>` に `{ status: "failed"; error }` を足す案もあるが、`close()` の memo 化により `ERR_SERVER_NOT_RUNNING` が起きず到達可能性が極めて低いこと、および 3 分岐を `shutdown()` 側で扱うと打ち切り後の後始末という別の判断を呼び込むことから、**実装は変えず doc コメントの記述を事実に合わせる**にとどめる。2 の経路（予算内の reject）を `shutdown()` 側がどう扱うかは ADR-002 で決める — `withTimeout` の呼び出しを `try`/`catch` で包めば `TimeoutOutcome` を 3 分岐にしなくても失敗チャネルは分離できるので、`withTimeout` の型はタイムアウトという 1 つの関心だけを表現したままにする。
 
-**予算ゼロ（判定は `!(timeoutMs > 0)`）は「常にタイムアウト」として、`promise` の settle 順序と無関係に決定的に `{ status: "timed-out" }` を返す。** これは意味論として素直であるだけでなく、**タイムアウト分岐（`logger.warn`）を自動テストに載せるための鍵**である。素朴に `setTimeout(0)` と race させる実装では踏めない — `server.close(cb)` のコールバックは `setTimeout(0)` のマクロタスクより必ず先に流れるため、`timeoutMs: 0` でも `completed` になってしまう（1 周目に `closeCb -> setTimeout0` を実測）。
+**予算ゼロ（判定は `!(timeoutMs > 0)`）は「常にタイムアウト」として、`promise` の settle 順序と無関係に決定的に `{ status: "timed-out" }` を返す。** これは意味論として素直であるだけでなく、**タイムアウト分岐（`logger.warn`）を自動テストに載せるための鍵**である。素朴に `setTimeout(0)` と race させる実装では踏めない — `server.close(cb)` のコールバックは `setTimeout(0)` のマクロタスクより必ず先に流れるため、`timeoutMs: 0` でも `completed` になってしまう（`closeCb -> setTimeout0` の順に流れることを実測）。
 
-- **契約の書き方（3 周目・アーキ S-203）**: 実装としては executor 内で同期的に resolve する（または `Promise.resolve(...)` を早期 return する）が、**契約の記述に「同期的に resolve する」とは書かない**。Promise の resolve を executor 内で同期的に呼んでも `then` / `await` への配送は必ずマイクロタスク経由になるため、呼び出し側から見れば `withTimeout(p, 0)` も `withTimeout(p, 2000)` も等しく非同期である。「同期 resolve」は「同期関数として値が返る」と誤読されうるので、doc コメントは「`promise` の settle 順序と無関係に決定的に `timed-out` を返す」と書く。実装方法としての併記は可。
-- **判定式は `timeoutMs <= 0` ではなく `!(timeoutMs > 0)`（3 周目・アーキ S-202）**。`NaN` は `NaN <= 0` が **false** になるため前者では `setTimeout(NaN)` 経路に落ちる（本計画で実測: 約 3ms 後に発火）。`!(NaN > 0)` は **true** なので後者なら `NaN` も予算ゼロに落ちる。呼び出し元は `shutdown()` の 1 箇所で既定値も `2_000` なので実害は無いが、型で防げない入力に対する全関数化としては後者が素直（CLAUDE.md の型安全性志向とも整合）。`shutdown(options)` 側も `options?.timeoutMs ?? SHUTDOWN_TIMEOUT_MS` として `{ timeoutMs: undefined }` が予算ゼロに落ちないようにする。
+- **契約の書き方**: 実装としては executor 内で同期的に resolve する（または `Promise.resolve(...)` を早期 return する）が、**契約の記述に「同期的に resolve する」とは書かない**。Promise の resolve を executor 内で同期的に呼んでも `then` / `await` への配送は必ずマイクロタスク経由になるため、呼び出し側から見れば `withTimeout(p, 0)` も `withTimeout(p, 2000)` も等しく非同期である。「同期 resolve」は「同期関数として値が返る」と誤読されうるので、doc コメントは「`promise` の settle 順序と無関係に決定的に `timed-out` を返す」と書く。実装方法としての併記は可。
+- **判定式は `timeoutMs <= 0` ではなく `!(timeoutMs > 0)`**。`NaN` は `NaN <= 0` が **false** になるため前者では `setTimeout(NaN)` 経路に落ちる（本計画で実測: 約 3ms 後に発火）。`!(NaN > 0)` は **true** なので後者なら `NaN` も予算ゼロに落ちる。呼び出し元は `shutdown()` の 1 箇所で既定値も `2_000` なので実害は無いが、型で防げない入力に対する全関数化としては後者が素直（CLAUDE.md の型安全性志向とも整合）。`startServer()` 側も `options?.shutdownTimeoutMs ?? SHUTDOWN_TIMEOUT_MS`（ADR-008）として `{ shutdownTimeoutMs: undefined }` が予算ゼロに落ちないようにする。**`0` / 負数 / `NaN` が「即座に諦めて警告を出す」を意味することは、非公開の `withTimeout` ではなく公開面である `StartServerOptions.shutdownTimeoutMs` の doc に書く**（既定値の実数も併記する。`SHUTDOWN_TIMEOUT_MS` は非 export なので型定義側から辿れないため）。
 
 実測（本計画）:
 
@@ -68,7 +68,7 @@ Issue には 3 つの修正案が挙がっている。
 
 この経路でも `promise.catch(() => {})` を必ず張り、後から reject しても unhandled rejection にしない。
 
-**タイマーは `unref()` しない（3 周目・アーキ S-201 による方針変更）。** 2 周目までは「unref しないとタイムアウト時間だけイベントループが生き延び、テストの teardown が遅延する」という理由で `timer.unref()` を採用する計画だった。本計画で 4 パターンを実測した結果、この理由は成立せず、逆に unref が観測性を失う経路を持つことが確認できたので撤回する。
+**タイマーは `unref()` しない（計画段階の方針を撤回）。** 当初は「unref しないとタイムアウト時間だけイベントループが生き延び、テストの teardown が遅延する」という理由で `timer.unref()` を採用する計画だった。本計画で 4 パターンを実測した結果、この理由は成立せず、逆に unref が観測性を失う経路を持つことが確認できたので撤回する。
 
 | ケース（タイムアウト 300ms、Node 22.22.1 / macOS） | 結果 |
 |---|---|
@@ -82,33 +82,50 @@ Issue には 3 つの修正案が挙がっている。
 - 撤回理由 2: **unref には実害がある。** 「`server.close()` のコールバックが来ないが ref 付きハンドルも残っていない」という状況では、unref 済みタイマーは発火せず、本 ADR が「真因切り分けの唯一の手掛かり」と位置づけた `logger.warn` ごとシャットダウンの終盤（`outro()` / `process.exit(0)` を含む）が丸ごとスキップされる。本 Issue の症状（ハング）では ref 付きハンドルが残っているので実際には発火するが、要件（AC-1）と観測性（AC-3）の両方を守る側に倒すなら ref のままが素直である。
 - この判断理由を実装時に doc コメントへ 1 行残す。
 
-**配置は `src/core/` ではなく `src/lib/` とする。根拠はクライアントバンドルへの影響である（レビュー 1 周目・アーキ W-002 で根拠を差し替え）。**
+**配置は `src/core/` ではなく `src/lib/` とする。ただしこの判断は「守らないと壊れる制約」ではなく「既存の並びに合わせる」だけのものである（根拠を 2 度書き直した末の結論）。**
 
-- `src/core/` は **`src/client/**` から import される層**である（実測: `content-type` / `file-tree` / `iframe-style` / `initial-state` / `sse-constants` が `src/client/**`・`src/components/**` から import されている）。クライアントバンドルは `scripts/build-client.mjs` が `src/client/entry.tsx` を esbuild でバンドルして作るため、`src/core/` に置いたものはそこから到達可能になりうる。**サーバー専用のユーティリティを置くと、使われないコードでバンドルが太る。**
-- `withTimeout` の利用者は `src/server/index.ts` の `shutdown()` ただ 1 箇所で、サーバー専用である。したがって `src/lib/` が正しい。
+先に、**採用しなかった 2 つの根拠と、それが誤りである理由**を記録する。同じ提案が再演されないために必要な部分である。
 
-**「`src/lib/` = サーバー専用」という逆命題は成り立たない**点に注意する（`src/lib/logger.ts` は `src/client/lib/sse.ts:7` から import されている）。ここで主張しているのは「`src/lib/` はサーバー専用の置き場である」ではなく「**`src/core/` はクライアントに載る層なので、サーバー専用のものを置くべきでない**」という一方向の基準である。
+1. **「`withTimeout` はタイマーという副作用をスケジュールするから」（＝ `src/core/` は純粋・`src/lib/` は副作用）** — 分割として成立していない。`src/lib/node-error.ts` や `src/lib/markdown.ts` は副作用を持たない。しかも `.issue/89/adr.md` ADR-001 が定めた既存の基準は「`src/core/` はフレームワーク／ランタイム非依存層」であり、`withTimeout`（import ゼロ、ブラウザにも存在する API しか使わない）はその基準では `src/core/` 側に落ちる。既存の基準を後から書き換えるのは筋が悪い。
+2. **「`src/core/` はクライアントバンドルに載る層だから、サーバー専用のものを置くとバンドルが太る」** — **事実として誤り**。`scripts/build-client.mjs` は `entryPoints: ["src/client/entry.tsx"]` + `bundle: true` で esbuild を呼ぶので、**バンドルに入るのはエントリから import 到達可能なモジュールだけ**であり、ディレクトリ所属は無関係である。生成済みの `src/server/renderer/client-bundle.js`（32,558 バイト）を実際に検査して確認した:
 
-2 周目までの根拠（「`withTimeout` はタイマーという副作用をスケジュールするから」＝ `src/core/` は純粋・`src/lib/` は副作用、という区分）は**採らない**。`src/lib/node-error.ts` や `src/lib/markdown.ts` は副作用を持たないので「lib = 副作用」は分割として成立しておらず、`.issue/89/adr.md` ADR-001 が定めた「ランタイム非依存」基準に照らしても `withTimeout`（import ゼロ、ブラウザにも存在する API しか使わない）は `src/core/` 側に落ちてしまう。基準を後から書き換えるのではなく、**既存の基準と両立する別の理由（バンドル影響）で説明できるならそちらを使う**。
+    | 検出したい文字列 | 由来（`src/core/` にあるがクライアントから import されていない） | バンドル内 |
+    |---|---|---|
+    | `node:path` | `path.ts` | false |
+    | `flatMap` / `mapError` / `getOr` | `result.ts` | false |
+    | `typedError` | `error.ts` | false |
+
+    そもそも `src/core/path.ts` は `node:path` を import しており、丸ごと載るならブラウザ用バンドルが壊れる。ビルドが通っている時点でも同じ結論になる。したがって `withTimeout` を `src/core/` に置いてもバンドルは 1 バイトも太らない。
+
+**では正しい根拠は何か。** 実測すると、**どちらのディレクトリでも壊れない**というのが答えである。
+
+- 既存の明文化された基準（`.issue/89/adr.md` ADR-001）は「ランタイム依存のものは `src/core/` に置かない」という**一方向の除外規則**でしかなく、「ランタイム非依存なら `src/core/` に置け」とは言っていない。`withTimeout` はこの規則に抵触しない。
+- 「`src/core/` = client / server 双方が使う共有層」という説明も、**事実として成り立たない**。実測（`src/client/**`・`src/components/**` からの import 有無）では `src/core/error.ts` / `path.ts` / `result.ts` はクライアントから 1 度も import されておらず、サーバーからのみ使われている。
+- 逆命題「`src/lib/` = サーバー専用」も成り立たない（`src/lib/logger.ts` は `src/client/lib/sse.ts` から import されている）。
+
+残るのは**中身から読み取れる事実上の区分**だけである。`src/core/` に入っているのは peek のドメイン語彙（`Result` / `TypedError` / file-tree の形 / content-type / SSE 定数）であり、`src/lib/` に入っているのは具体的な基盤ヘルパ（logger / markdown / watcher / file-tree-cache / styles / project-id / node-error）である。`withTimeout` は後者であり、利用者も `src/server/index.ts` の `shutdown()` ただ 1 箇所しかない。**よって `src/lib/` に置くが、これは「バンドルが太るから」でも「ランタイム依存だから」でもなく、単に同種のヘルパの隣に置くという以上の意味を持たない。**
+
+この結論に伴い、**配置根拠は実装の doc コメントから外す**。誤った基準が恒久的なコードコメントとして残ると将来のコントリビュータの配置判断を誤らせるのに対し、正しい基準は「どちらでもよい」なのでコメントに書く価値が薄い。`src/lib/with-timeout.ts` にはこの ADR への参照 1 行だけを残す。
 
 ### Consequences
 
 - 良い点: Ctrl+C の終了性が原因に依存せず保証される。同時に、暗黙の同期依存という既知の脆さが消える。警告ログにより再発が可視化される。
 - 良い点: `process.exit` がサーバー層に漏れないので `shutdown()` はテストから安全に呼べる。
-- 良い点: 予算ゼロ（`!(timeoutMs > 0)`）の特別扱いにより、**タイムアウト分岐と警告出力が自動テストで担保される**（AC-3）。1 周目の計画では手動確認のみだった。
+- 良い点: 予算ゼロ（`!(timeoutMs > 0)`）の特別扱いにより、**タイムアウト分岐と警告出力が自動テストで担保される**（AC-3）。当初の計画では手動確認のみだった。
 - 良い点: `unref()` を採らないことで、タイムアウト時の警告（真因切り分けの唯一の手掛かり）が「他に ref 付きハンドルが無い」ケースでも失われない。
 - トレードオフ: 予算ゼロが「即タイムアウト」になるのは、素朴に読むと「即座に諦める」であって直感に反しない一方、`withTimeout(p, 0)` に「0ms 待つ = ほぼ即座に完了を確認する」を期待するコードがあれば壊れる。呼び出し箇所は `shutdown()` 1 箇所のみで、`timeoutMs` の既定値は `SHUTDOWN_TIMEOUT_MS = 2_000` なので実害は無い。doc コメントに明記する。
 - トレードオフ: `unref()` を使わないため、`clearTimeout` の漏れがそのままテスト/プロセスの終了遅延として現れる（実測: 300ms のタイムアウトで `clearTimeout` を落とすと 303ms 生き残る）。これは欠点でもあるが、漏れが可視化されるという意味では検出しやすい方向の失敗であり、ステップ 2 の単体テストが担保する。
+- トレードオフ: `src/lib/` / `src/core/` の境界は本 ADR でも確定しなかった（既存の基準は除外規則でしかなく、中身の並びも一貫していない）。`withTimeout` の配置はどちらでも壊れないため実害は無いが、境界を明文化するのは本 Issue のスコープ外とした。
 - トレードオフ: タイムアウトが真の原因を隠しうる。→ 警告ログ・シグナル受信ログと手動確認での記録で緩和する。自動テストが担保するのは「警告経路が存在すること」「正常系で偽陽性が出ないこと」までで、実運用で警告が出ているかどうかは手動確認の記録でしか分からない。
 - トレードオフ: 打ち切りで終了しても exit code は 0 のまま（`process.exit(0)`）。読み取り専用のプレビューサーバーであり、失敗として扱う必要が無いため許容する。
 - トレードオフ: 「原因未特定」を前提に据えるため、本 Issue のクローズは「ハングが再発しないこと」の確認であって「原因の解明」ではない。手動確認（10 回）は統計的な証明力を持たないため、真因追跡は Node 24 での検証（CI matrix による自動実行 + plan のステップ 9 の macOS / 実ブラウザ確認）と、シグナル受信ログ（ADR-007 (3)）による次回再発時の切り分けに委ねる。
 
 ---
 
-## ADR-002: `server.close()` を手順 1 に置き、手順間のエラーを分離する（`closeIdleConnections()` は併用しない）
+## ADR-002: `server.close()` を手順 1 に置き、手順ごとにエラーを分離する（`closeIdleConnections()` は併用しない）
 
 ### Status
-Proposed（レビュー 1 周目で手順順序を改訂し、エラー分離を追加）
+Proposed（レビューで手順順序を改訂し、エラー分離を追加した後、分離の粒度と失敗の集約方法をさらに改訂）
 
 ### Context
 
@@ -121,25 +138,50 @@ Proposed（レビュー 1 周目で手順順序を改訂し、エラー分離を
 順序を次のように変える。
 
 ```
-1. const closing = close()          // server.close(): リスナー停止（新規接続の受付を止める）
-   try {
-2.   sse.shutdown()                 // 新規 /sse を拒否し、既存ストリームを abort
-3.   watcher.close()                // これ以上 broadcast を発生させない
-4.   if ("closeAllConnections" in server) server.closeAllConnections()
-                                    // 送信中の SSE を抱えた active ソケットを destroy
-   } catch (error) { failure = { error } }
-5. const outcome = await withTimeout(closing, shutdownTimeoutMs)
-   if (outcome.status === "timed-out") logger.warn(...)   // 追加の後始末はしない（ADR-007）
-   if (failure) throw failure.error
+   const failures: unknown[] = []
+   const step = (run) => { try { run() } catch (error) { failures.push(error) } }
+
+1. const closing = close()               // server.close(): リスナー停止（新規接続の受付を止める）
+2. step(() => sse.shutdown())            // 新規 /sse を拒否し、既存ストリームを abort
+3. step(() => watcher.close())           // これ以上 broadcast を発生させない
+4. step(() => { if ("closeAllConnections" in server) server.closeAllConnections() })
+                                         // 送信中の SSE を抱えた active ソケットを destroy
+5. try {
+     const outcome = await withTimeout(closing, shutdownTimeoutMs)
+     if (outcome.status === "timed-out") logger.warn(...)  // 追加の後始末はしない（ADR-007）
+   } catch (error) { failures.push(error) }
+
+   if (failures.length === 1) throw failures[0]
+   if (failures.length > 1) throw new AggregateError(failures, "Failed to shut down the server.")
 ```
 
-**`close()` を手順 1 に置く（レビュー 1 周目・並行性 W-001 による改訂）。** 2 周目までの計画は `sse.shutdown()` を手順 1、`close()` を手順 2 としていたが、これは**この ADR 自身が掲げる根拠と矛盾していた**。手順 2 のコメントは「再接続を誘発しうる操作より前にリスナーを止める」と書いていたのに、その前に走る `sse.shutdown()` こそが、接続中の SSE ストリームを全部終端させてブラウザの `onerror` → 自前 `setTimeout(connect, delay)` を誘発する操作である（`src/client/lib/sse.ts` / `src/server/renderer/html-document.tsx`）。つまり不変条件は「手順 1〜4 の間に `await` が無い」という**偶然**によってのみ守られており、ADR-001 が消そうとしている依存そのものだった。`close()` を先頭に置けば根拠と実装が一致する。**Issue 本文の修正案 1（「まず `server.close()` を呼んで新規接続の受付を止めてから、SSE ストリーム / ソケットを閉じる」）とも一致する。**
+**`close()` を手順 1 に置く（レビューを受けた改訂）。** 当初の計画は `sse.shutdown()` を手順 1、`close()` を手順 2 としていたが、これは**この ADR 自身が掲げる根拠と矛盾していた**。旧手順 2（`close()`）のコメントは「再接続を誘発しうる操作より前にリスナーを止める」と書いていたのに、その前に走る `sse.shutdown()` こそが、接続中の SSE ストリームを全部終端させてブラウザの `onerror` → 自前 `setTimeout(connect, delay)` を誘発する操作である（`src/client/lib/sse.ts` / `src/server/renderer/html-document.tsx`）。つまり不変条件は「手順 1〜4 の間に `await` が無い」という**偶然**によってのみ守られており、ADR-001 が消そうとしている依存そのものだった。`close()` を先頭に置けば根拠と実装が一致する。**Issue 本文の修正案 1（「まず `server.close()` を呼んで新規接続の受付を止めてから、SSE ストリーム / ソケットを閉じる」）とも一致する。**
 
 入れ替えで壊れるものが無いことは確認済みである。`sse.shutdown()` は `shuttingDown` フラグを立てて `clients` を走査するだけで、リスナー閉鎖の前後を問わず取りこぼさない（ADR-003 の二重チェック）。むしろリスナーを先に閉じることで、シャットダウン後の `/sse` は 503 に到達する前に TCP レベルで拒否されるようになる。
 
-**手順間のエラーを分離する（同 W-001 の後半）。** 旧構造では手順 1〜4 のいずれかが throw すると `withTimeout` に到達せず、(a) `closing` に reject ハンドラが一切付かないまま残り（unhandled rejection の芽）、(b) 有界待機が行われないままシャットダウンが失敗する。`close()` を手順 1 に移すことで「`closing` が生成されない」経路は消えるが、残る手順 2〜4 については `try`/`catch` で捕捉し、**手順 5（有界待機と警告）を必ず実行してから元のエラーを rethrow する**。これにより「必ず有界に settle する」と「失敗は呼び出し側（CLI の `logger.error`）に届く」を両立させる。捕捉したエラーは `{ error: unknown } | undefined` に包んで保持する（`undefined` を throw された場合に取り違えないため）。
+**エラー分離は「手順 2〜4 をまとめて 1 つの `try` に入れる」ではなく「手順ごとに個別に捕捉する」。** 旧構造では手順 1〜4 のいずれかが throw すると `withTimeout` に到達せず、(a) `closing` に reject ハンドラが一切付かないまま残り（unhandled rejection の芽）、(b) 有界待機が行われないままシャットダウンが失敗する。`close()` を手順 1 に移すことで「`closing` が生成されない」経路は消え、手順 2〜4 を単一の `try` で囲むことで (b) も消えた。**しかしそこで止めると、手順 2 の throw が手順 3・4 を巻き添えにする。** 手順 4（`closeAllConnections()`）は「有界待機に落ちずに速く終わる」ことを担保している唯一の手順なので、これが飛ぶと毎回タイムアウト予算をフルに使うことになる。**分離の粒度が目的と合っていなかった。**
 
-実測（フォールト注入・実施後に撤去）: 手順 3 に `throw` を注入した状態で `shutdown()` は **1ms で reject し、2 回目の呼び出しは同じ memo 化された promise を返した**。unhandled rejection は発生しなかった。
+フォールト注入で実測した（隔離 worktree、実施後に撤去。SSE 接続 1 本を張った状態、予算は既定の 2,000ms）:
+
+| 構造 | 手順 2 に throw を注入したときの `shutdown()` 所要時間 |
+|---|---|
+| 手順 4 が飛ぶ（単一 `try`／手順 4 を無効化した対照） | **2,003ms**（`did not close within 2000ms` の警告付き） |
+| 手順ごとに個別捕捉（採用形） | **1ms**（警告なし。手順 4 が走るため） |
+
+したがって **`step(run)` ヘルパで手順 2 / 3 / 4 をそれぞれ独立に捕捉する**。どの手順が失敗しても残りの手順は必ず実行され、手順 5 の有界待機にも必ず到達する。
+
+**失敗チャネルは 1 本ではなく配列にする。** 捕捉したエラーを `{ error: unknown } | undefined` という単一スロットに入れる形だと、`withTimeout(closing, ...)` が予算内に reject した場合に `await` がそのまま throw して `if (failure) throw failure.error` に到達せず、**捕捉済みのエラーがどこにも記録されずに消える**。旧構造でのフォールト注入（手順に throw を注入しつつ `close()` を 5ms 後に reject させる）でも、`shutdown()` が reject した値は `close()` 側のエラーだけだった。独立した 2 つの失敗が 1 つのスロットを奪い合う構造だったので、**両方を保持できる形に変える**。
+
+- 手順 5 も `try`/`catch` で包み、`closing` の reject を `failures` に**追加**する（丸ごと握り潰さない）。この経路ではタイムアウト警告は出さない — 予算内に reject したのであって「閉じられなかった」わけではないため。
+- 失敗が 1 件なら**そのまま throw する**。`server.close()` のエラーが CLI の `logger.error` にそのまま届く既存挙動は、これで完全に維持される（実測確認済み）。
+- 失敗が 2 件以上なら `AggregateError` で throw する。実測で `AggregateError.errors` に `["STEP2-FAILED", "CLOSE-FAILED"]` の両方が入ることを確認した。
+
+**なぜ `AggregateError` か（他の選択肢との比較）。**
+
+- **`logger.error` で個別に記録する** — 失敗は残らず出力されるが、`shutdown()` はサーバー層であり、エラーの提示先を決めるのは CLI 層の責務である（ADR-001 で `process.exit` を層から追い出したのと同じ理由）。加えて「呼び出し側に届く」チャネルが依然 1 本なので、`await server.shutdown()` を `catch` した呼び出し側から見た失敗は相変わらず 1 件のままになる。
+- **`TimeoutOutcome<T>` を `{ status: "failed"; error }` の 3 分岐にする** — 型としては最も素直だが、`withTimeout` に「タイムアウト」と「対象の失敗」という 2 つの関心を持たせることになる（ADR-001）。呼び出し側で `try`/`catch` するだけで同じ分離が得られるので、公開する型を増やす必要がない。
+- **`Result<T, E>`（`src/core/result.ts`）を使う** — 使わない。`Result` は「関数の返り値として成否を表す」語彙であり、ここで表現したいのは「後で throw するために保留した例外」でレイヤが違う。リポジトリ内の `Result` の `E` は実際すべて `TypedError` 派生であり、`unknown` を載せるのは慣習外である。
+- **`AggregateError`** — ECMAScript 標準（`lib: ES2024`）で追加の型定義が要らず、「複数の独立した失敗をまとめて 1 つ throw する」という意味そのものである。1 件のときは包まないので既存挙動も壊さない。**到達可能性が実質ゼロの経路に新しい語彙を持ち込まない**という点で、CLAUDE.md の型安全性原則（表現できることを増やすのではなく、誤りを表現できなくする）とも矛盾しない。
 
 **Issue 修正案 3 の後半（close 完了までの間に張られた接続の破棄）は、この順序変更によって解消される。** リスナーを先に閉じる以上、「close 完了までの間に新たに accept される接続」がそもそも存在しなくなるためである。つまり修正案 3 の後半は却下したのではなく**別の手段で満たされている**。**不採用とするのは `closeIdleConnections()` の併用のみ**である。
 
@@ -147,7 +189,7 @@ Proposed（レビュー 1 周目で手順順序を改訂し、エラー分離を
 
 **`closeAllConnections()` は省略不可**である点も明記する。Hono の `run()` は `cb` 解決後 `finally { stream.close() }` を呼ぶが、これは writable を閉じて HTTP レスポンスを正常終了させるだけで、**ソケットは keep-alive のアイドル状態に戻り閉じない**（`streamSSE` は `Connection: keep-alive` を明示的に付けている）。しかもその解決は abort の後の別ターンで起きるため、同期シャットダウンブロックの時点では完了していない。つまり「SSE ストリームを閉じる」だけではソケットは解放されず、`server.close()` は待ち続ける。ソケットを実際に解放しているのは `closeAllConnections()` である。
 
-**ただし「これが無いとアイドルの keep-alive ソケットが残って `server.close()` が永久に待つ」という説明は誤りである（レビュー 1 周目・並行性 W-005 による改訂）。** Node 19 以降の `http.Server.prototype.close` は先頭で `httpServerPreClose(server)` を呼び、その中で **`server.closeIdleConnections()` を実行している**。本 Issue の作業中に実測して確認した:
+**ただし「これが無いとアイドルの keep-alive ソケットが残って `server.close()` が永久に待つ」という説明は誤りである（改訂）。** Node 19 以降の `http.Server.prototype.close` は先頭で `httpServerPreClose(server)` を呼び、その中で **`server.closeIdleConnections()` を実行している**。本 Issue の作業中に実測して確認した:
 
 ```
 $ node -p "require('http').Server.prototype.close.toString()"
@@ -164,17 +206,19 @@ function httpServerPreClose(server) { server.closeIdleConnections(); clearInterv
 ### Consequences
 
 - 良い点: 「破棄 → 再接続 → accept」の経路が構造的に消える。順序に理由があることがコードとコメントに残る。Issue 修正案 3 の後半の懸念も同時に解消される。
-- 良い点: 呼び出し側から見た契約が明確になる — `shutdown()` から戻った時点（最初の `await` の前）でリスナーは既に閉じている。これはテストで決定的に検証できる（レビューで 80 回試行して 100% 再現を確認済み）。`close()` を手順 1 に移したことで、この契約は**他の手順の成否から独立**した。
-- 良い点: 手順 2〜4 の失敗が「有界に settle する」保証を壊さない。エラーは握り潰されず、有界待機の後に rethrow されて CLI の `logger.error` に届く。
-- 良い点: リスニングハンドルは手順 2 で閉じるため、タイムアウトで打ち切っても**ポートは解放済み**である（`server.close()` 呼び出し後、コールバック未発火の状態で同じポートに再 bind できることを実測で確認）。
+- 良い点: 呼び出し側から見た契約が明確になる — `shutdown()` から戻った時点（最初の `await` の前）でリスナーは既に閉じている。これはテストで決定的に検証できる（80 回試行して 100% 再現を確認済み）。`close()` を手順 1 に移したことで、この契約は**他の手順の成否から独立**した。
+- 良い点: どの手順が失敗しても残りの手順は実行され、有界待機にも必ず到達する。「たまたま throw しないから速い」という依存が手順 2〜4 から消えた。
+- 良い点: 失敗が握り潰される経路が無い。手順 2〜4 の失敗と `closing` の予算内 reject が同時に起きても、両方が `AggregateError.errors` に載って CLI の `logger.error` に届く。
+- 良い点: リスニングハンドルは手順 1 で閉じるため、タイムアウトで打ち切っても**ポートは解放済み**である（`server.close()` 呼び出し後、コールバック未発火の状態で同じポートに再 bind できることを実測で確認）。
 - トレードオフ: シャットダウン中の進行中リクエスト（`/api/content` 等）が中断される。従来もほぼ同時だったため実質差は無く、意図した挙動。
+- トレードオフ: 失敗が 2 件以上のとき、呼び出し側が受け取るのは元のエラーではなく `AggregateError` になる。`src/index.ts` は `logger.error` に渡すだけなので実害は無く、そもそもこの経路は現状のコードでは到達しない。
 
 ---
 
 ## ADR-003: シャットダウン中フラグは SseManager のクロージャに持ち、`closeAll` を `shutdown` に終端化する
 
 ### Status
-Proposed（レビュー 1 周目で `onAbort` の登録順序と ② のコメント記述を改訂）
+Proposed（`onAbort` の登録順序と ② のコメント記述を改訂したのち、登録順序だけでは窓が塞がっていないことが判明して `clients.add()` にガードを追加）
 
 ### Context
 
@@ -198,7 +242,25 @@ Proposed（レビュー 1 周目で `onAbort` の登録順序と ② のコメ�
 
 - `shutdown()` は「`shuttingDown = true` を**立ててから**」`clients` を走査する。
 - `/sse` ハンドラは「`clients.add(client)` した**直後に**」フラグを再チェックし、立っていれば即 `cleanup()` して return する。
-- `stream.onAbort(cleanup)` は `clients.add(client)` の**前**に登録する（レビュー 1 周目・並行性 W-003 による改訂。1 周目は後に置いていた）。Hono の `StreamingApi.abort()` は `abort()` 時点で登録済みのリスナーにしか通知しないため、2 つの間に将来 `await` が入ると、その窓で切れた接続の `cleanup()` が永久に呼ばれず client が `clients` に残る。順序を入れ替えるだけでこの窓が消える（コストゼロ）。
+- `stream.onAbort(cleanup)` は `clients.add(client)` の**前**に登録し、**登録は `if (!closed)` でガードする**。
+
+**登録順序の入れ替えだけでは窓は塞がらない（改訂）。** 当初は「`onAbort` を `add` の前に移せば窓は消える（コストゼロ）」としていたが、これは事実ではなかった。`onAbort` と `add` の間に将来 `await` が入り、その窓で abort が landing した場合:
+
+1. `cleanup()` が発火して `closed = true` になるが、`clients.delete(client)` は **client がまだ Set に入っていないので空振り**する。
+2. 窓から復帰した処理が `clients.add(client)` で**死んだ client を登録する**。
+3. ②の再チェックは `shuttingDown` しか見ないので素通りし、`while (!closed)` は即座に抜ける。
+
+→ **client は `clients` に残り続ける。** 順序変更で改善されたのは「keep-alive ループが 30 秒周期で回り続けるのを止める」ことだけで、リーク自体は残っていた。フォールト注入（`onAbort` と `add` の間に人工的な `await delay(30)` を挿入し、その窓で response body を cancel して abort を起こす）で実測した:
+
+| 実装 | 窓の中で abort したときの `clientCount` |
+|---|---|
+| `add` → `onAbort`（改訂前） | **1**（しかも `closed` が false のままなので keep-alive も回り続ける） |
+| `onAbort` → `add`（順序変更のみ） | **1** |
+| `onAbort` → `if (!closed) add`（採用形） | **0** |
+
+**それでも順序の入れ替えは必要である。** Hono の `StreamingApi.abort()` は `aborted` フラグをラッチしたうえで**その時点で登録済みのリスナーにしか通知しない**（`node_modules/hono/dist/utils/stream.js`）。`onAbort` を後ろに置くと、窓で起きた abort は `cleanup()` を一度も呼ばないため `closed` が false のままになり、`!closed` ガードも意味を失う。**「`onAbort` を先に登録する」が `cleanup()` の到達を保証し、「`!closed` ガード」が死んだ client の登録を防ぐ — 2 つで 1 組**である。
+
+**塞げていない窓も明示しておく。** `stream.onAbort(cleanup)` **より前**に `await` が入った場合は、abort が `aborted` にラッチされてから後発のリスナーが登録されることになり、`cleanup()` は永久に呼ばれない（`closed` は false のまま → `clients.add()` が通る）。実測でも `clientCount` は 1 になった。したがって不変条件は「**`onAbort` の登録は、`client` を組み立てた直後・他の何よりも先に行う**」である。Hono 側で `aborted` 済みの signal に対して後発リスナーを即時発火する API は無いため、これはコードの並びで守るしかない。
 
 `shutdown()` 側の「フラグ立て → 走査」も、ハンドラ側の「登録 → 再チェック」も、それぞれ内部に `await` が無い 1 同期ブロックである。**単一スレッドでは、マイクロタスクは次のマクロタスクの前に必ず全て流れる**ため、`request` イベント由来のブロックと SIGINT ハンドラ由来のブロックは interleave できず、どちらが先でも取りこぼしが起きない。
 
@@ -209,11 +271,11 @@ Proposed（レビュー 1 周目で `onAbort` の登録順序と ② のコメ�
 1. **意味論的に正しいステータスを in-flight リクエストに明示的に返す。** シャットダウン中のサーバーが新規ストリームを受け付けない、という状態を 503 Service Unavailable が正確に表す。
 2. **ストリームを一切生成しないので軽い。** `streamSSE` の `TransformStream` / `StreamingApi` を作らずに済む。
 
-**クライアント側の再接続挙動は 503 でも 200 + 即クローズでも同一である。** peek のクライアントは 2 実装（`src/client/lib/sse.ts` と `src/server/renderer/html-document.tsx` のインラインスクリプト）あるが、いずれも native `EventSource` の自動再接続に依存しておらず、`onerror` で `close()` してから自前で `setTimeout(connect, delay)` して新しい `EventSource("/sse")` を作る。したがって native の「非 2xx は恒久 CLOSED」仕様はこの実装には効かない。**再接続に関して本質的なのは、`server.close()` をシャットダウン冒頭（ADR-002 の手順 2）で呼ぶため、その再接続試行がそもそも TCP レベルで失敗する（`ERR_CONNECTION_REFUSED`）ことである。** 既存の指数バックオフ + 10 回上限で収束するため、無限リトライにはならない。
+**クライアント側の再接続挙動は 503 でも 200 + 即クローズでも同一である。** peek のクライアントは 2 実装（`src/client/lib/sse.ts` と `src/server/renderer/html-document.tsx` のインラインスクリプト）あるが、いずれも native `EventSource` の自動再接続に依存しておらず、`onerror` で `close()` してから自前で `setTimeout(connect, delay)` して新しい `EventSource("/sse")` を作る。したがって native の「非 2xx は恒久 CLOSED」仕様はこの実装には効かない。**再接続に関して本質的なのは、`server.close()` をシャットダウン冒頭（ADR-002 の手順 1）で呼ぶため、その再接続試行がそもそも TCP レベルで失敗する（`ERR_CONNECTION_REFUSED`）ことである。** 既存の指数バックオフ + 10 回上限で収束するため、無限リトライにはならない。
 
 **ストリームコールバック内の再チェック（②）は、これとは別に必ず置く。** ただし②に落ちた場合のワイヤ上の帰結は 503 ではない: ステータスとヘッダは `streamSSE` 自身が決めるため、②で `cleanup(); return;` しても **HTTP 200 + `text/event-stream` + 即 EOF** が返る。クライアントは `onerror` → 自前リトライ → TCP 拒否で収束するため実害は無い。**①（503）は「意図を正しく表明する」ための設計、②は「取りこぼさない」ための正しさの保証**という役割分担である。
 
-**②のコメントは「現行の Hono では到達不能である」ことを明記する（レビュー 1 周目・並行性 W-004 による改訂）。** 1 周目の実装コメントは「the response was already handed back（レスポンスは既に返されている）」と書いていたが、これは**事実誤り**である — `streamSSE` は `run(stream, cb)` を `c.newResponse(...)` より**前**に呼ぶので、②を評価している時点でレスポンスはまだ返されていない。結果（200 + 即 EOF）自体は正しいので、理由づけだけを直した。
+**②のコメントは「現行の Hono では到達不能である」ことを明記する（改訂）。** 当初の実装コメントは「the response was already handed back（レスポンスは既に返されている）」と書いていたが、これは**事実誤り**である — `streamSSE` は `run(stream, cb)` を `c.newResponse(...)` より**前**に呼ぶので、②を評価している時点でレスポンスはまだ返されていない。結果（200 + 即 EOF）自体は正しいので、理由づけだけを直した。
 
 あわせて、現行の Hono では `app.get` ハンドラ → `streamSSE` → `run()` → `cb` の最初の `await` までが同一同期ブロックであり、`sse.shutdown()` も完全に同期なので、**②に落ちる経路は存在しない**（テストでも直接カバーできない）。それでも分岐を残すのは、**将来 `clients.add()` より前に `await` が入った場合（例: Hono のディスパッチが非同期化した場合）にも「取りこぼさない」保証を成立させ続けるため**である。「実際に起きるレース」と誤読されないよう、この位置づけをコメントに書く。
 
@@ -237,17 +299,18 @@ Proposed（レビュー 1 周目で `onAbort` の登録順序と ② のコメ�
 - トレードオフ: `SseManager.closeAll` → `shutdown` の改名により `src/server/index.ts` と `src/server/routes/sse.test.ts` の呼び出し箇所を追随させる必要がある（いずれもリポジトリ内で完結）。
 - トレードオフ: `SseManager` に再起動可能性が無くなる（終端化）。peek はプロセス寿命 = サーバー寿命なので実害は無い。
 - トレードオフ: ①と②で返るステータスが異なる（503 / 200 + 即 EOF）。窓が極小かつクライアント挙動が同一なので許容する。
+- トレードオフ: `clients` へのリーク防止は「`onAbort` の登録が最初に来ること」に依存したままである（`onAbort` より前に `await` が入ると塞げない）。型やテストでは守れないため、実装のコメントで不変条件として残す。
 
 ---
 
 ## ADR-004: `in` 演算子ナローイングをそのまま使う（型述語 `isHttpServer` への置き換えは撤回）
 
 ### Status
-Proposed（1 周目の Decision を**レビュー 1 周目で撤回**した ADR。撤回の経緯を残す）
+Proposed（当初の Decision をレビューで撤回した ADR。撤回の経緯を残す）
 
 ### Context
 
-`src/server/index.ts:196` に `if ("closeAllConnections" in server) { server.closeAllConnections(); }` がある。CLAUDE.md は「TypeScript の型システムを最大限活用した型安全性」を第一原則に挙げており、リポジトリの他所は判別可能なユニオン（`ServerConfig` / `AppContext` / `Result`）で徹底されている。1 周目はこの `in` を「方針から外れた数少ない箇所」と見なしたが、**この見立て自体が誤りだった**（Decision を参照）。
+`shutdown()` の手順 4 に `if ("closeAllConnections" in server) { server.closeAllConnections(); }` がある。CLAUDE.md は「TypeScript の型システムを最大限活用した型安全性」を第一原則に挙げており、リポジトリの他所は判別可能なユニオン（`ServerConfig` / `AppContext` / `Result`）で徹底されている。当初はこの `in` を「方針から外れた数少ない箇所」と見なしたが、**この見立て自体が誤りだった**（Decision を参照）。
 
 型定義を確認した事実:
 
@@ -264,7 +327,7 @@ Proposed（1 周目の Decision を**レビュー 1 周目で撤回**した ADR�
 
 ### Decision
 
-**a を採る（現状維持 = インライン `in`）。1 周目に採った b（型述語）は撤回する。**
+**a を採る（現状維持 = インライン `in`）。当初採った b（型述語）は撤回する。**
 
 ```ts
 // `serve()` returns `ServerType` (http.Server | Http2Server | Http2SecureServer)
@@ -275,11 +338,11 @@ if ("closeAllConnections" in server) {
 }
 ```
 
-**撤回理由: 型述語は型安全性を上げるのではなく下げるから**（レビュー 1 周目・アーキ B-001）。
+**撤回理由: 型述語は型安全性を上げるのではなく下げるから**。
 
 - `"closeAllConnections" in server` は **TypeScript の制御フロー解析がコンパイラとして検証するナローイング**である。`Http2Server` / `Http2SecureServer` は `@types/node` では `closeAllConnections` を持たない interface なので、`in` は union を `http.Server` に正しく絞り込む。**アサーションはコード上のどこにも存在しない。**
 - 対して手書きの `function isHttpServer(s: ServerType): s is HttpServer` は、**本体と述語の整合を TypeScript が検証しない**。`return true;` に書き換えてもコンパイルは通り、実行時に落ちる。つまり「検証済みナローイング → 未検証アサーション」への置き換えであり、CLAUDE.md の「型システムを最大限活用して型安全性を優先する」という第一原則に照らすと**後退**である。
-- 1 周目に挙げた利点 (2)（「2 箇所目の利用で再チェックが要らない」）は、**同一 PR の ADR-007 で「打ち切り時の再 `closeAllConnections()`」を撤回した時点で消滅していた**。実際の利用箇所は 1 箇所しかない。利点 (1)（doc コメントの集約）は `in` の直上にコメントを置けば同じく達成できる。残るのは (3)（意図が読める）だけで、それと引き換えに型検査を 1 段落とすのは割に合わない。
+- 当初挙げた利点 (2)（「2 箇所目の利用で再チェックが要らない」）は、**同一 PR の ADR-007 で「打ち切り時の再 `closeAllConnections()`」を撤回した時点で消滅していた**。実際の利用箇所は 1 箇所しかない。利点 (1)（doc コメントの集約）は `in` の直上にコメントを置けば同じく達成できる。残るのは (3)（意図が読める）だけで、それと引き換えに型検査を 1 段落とすのは割に合わない。
 - そもそも本件は受け入れ基準から外され「付随整理」に降格していた変更である。**整理のつもりの変更が型安全性を下げるなら、やらない方が正しい。**
 
 なお c（`as HttpServer`）は実行時保証が消えるため引き続き採らない。d（`createAdaptorServer`）は戻り値型が同じ `ServerType` なので解決しない。
@@ -298,7 +361,7 @@ if ("closeAllConnections" in server) {
 ## ADR-005: `ServerInstance` を `{ shutdown }` だけに絞る（`close` / `sseCloseAll` / `watcher` を削除）
 
 ### Status
-Proposed（レビュー 1 周目で `watcher` の判断と `timeoutMs` の置き場を改訂）
+Proposed（`watcher` の判断と `timeoutMs` の置き場をレビューで改訂）
 
 ### Context
 
@@ -310,7 +373,7 @@ Proposed（レビュー 1 周目で `watcher` の判断と `timeoutMs` の置き
 
 - **`close`** — 削除する。`close()` だけを呼ぶと「SSE ストリームが生きたまま `server.close()` が待ち続ける」= まさに今回直そうとしているハングを外部から再現できる。
 - **`sseCloseAll`** — 削除する。本 Issue で終端操作になるため、`sseCloseAll()` だけを呼ぶと「SSE は死んだがサーバーは生きていて、以後 `/sse` は永久に 503」という不整合な状態を外部から作れる。加えてこの削除は `closeAll` → `shutdown` 改名（ADR-003）の必然的帰結でもある。
-- **`watcher`** — **削除する（レビュー 1 周目・アーキ W-004 による改訂）。** 1 周目は「読み取り専用の観測用フィールドで、これ単体を触ってもライフサイクルの不整合は作れない」として残す判断だったが、これは基準の後半を過小に読んでいた。`FileWatcherHandle.close()` は公開されており、`server.watcher.close()` を単独で呼ぶと **HTTP サーバーと SSE ストリームは生きたままファイル監視だけが死に、ブラウザは接続を保ったまま永遠に更新を受け取らない**。これは `sseCloseAll` の削除理由に挙げた「SSE は死んだがサーバーは生きている」と同型であり、基準の「またはそれに準ずる不整合状態」に該当する。加えて `grep -rn "\.watcher\|watcher:" src` の結果、**参照は宣言行のみ**（テストからも使われていない）で `close` / `sseCloseAll` と条件が完全に一致する。同じ PR で 2 つを消しながらこれだけ残す理由は無い。
+- **`watcher`** — **削除する（レビューを受けた改訂）。** 当初は「読み取り専用の観測用フィールドで、これ単体を触ってもライフサイクルの不整合は作れない」として残す判断だったが、これは基準の後半を過小に読んでいた。`FileWatcherHandle.close()` は公開されており、`server.watcher.close()` を単独で呼ぶと **HTTP サーバーと SSE ストリームは生きたままファイル監視だけが死に、ブラウザは接続を保ったまま永遠に更新を受け取らない**。これは `sseCloseAll` の削除理由に挙げた「SSE は死んだがサーバーは生きている」と同型であり、基準の「またはそれに準ずる不整合状態」に該当する。加えて `grep -rn "\.watcher\|watcher:" src` の結果、**参照は宣言行のみ**（テストからも使われていない）で `close` / `sseCloseAll` と条件が完全に一致する。同じ PR で 2 つを消しながらこれだけ残す理由は無い。
 
 ```ts
 export type ServerInstance = {
@@ -319,7 +382,7 @@ export type ServerInstance = {
 ```
 
 - シャットダウンは「全部落とすか、何もしないか」の 2 択にする。
-- **タイムアウト値の注入口は `shutdown()` の引数ではなく `startServer()` の第 2 引数に置く** — 詳細は ADR-008。1 周目は `shutdown(options?: { timeoutMs })` としていたが、memo 化との契約矛盾を型で消せるため撤回した。
+- **タイムアウト値の注入口は `shutdown()` の引数ではなく `startServer()` の第 2 引数に置く** — 詳細は ADR-008。当初は `shutdown(options?: { timeoutMs })` としていたが、memo 化との契約矛盾を型で消せるため撤回した。
 - タイムアウト時はソケットハンドルが残りうること（プロセス終了の責務は呼び出し側）は引き続き `shutdown` の doc コメントに明記する。
 
 **破壊的変更に見えるが実際には非破壊**である。package.json には `main` / `exports` が無く `bin` のみなので、この型を import できる外部コンシューマは存在しない。
@@ -388,14 +451,14 @@ try {
 2. Issue の症状プロファイルと一致する唯一の実測欠陥である。真因未特定の状況で、実測できた欠陥を残したまま閉じるのは合理的でない。
 3. 差分が小さい（ヘルパ 1 つの削除と 1 行の置換）。挙動は abort 時・正常完了時とも等価。
 
-**検証方法（2 周目で作り直し、3 周目で穴を 2 つ塞いだ）**
+**検証方法（計画段階で作り直し、さらに穴を 2 つ塞いだ）**
 
-1 周目の計画は「`node:timers/promises` の `setTimeout` を N 回正常完了させ、リスナー数が 0 のままであることを assert する」としていたが、これは `sse.ts` を 1 行も通らず、実装が手書き `sleep()` に戻っても緑のままだった（レビューの指摘どおり）。2 周目で `createSseManager()` を実際に経由する形に作り直し、3 周目でさらに次の 2 点を足した。
+当初の計画は「`node:timers/promises` の `setTimeout` を N 回正常完了させ、リスナー数が 0 のままであることを assert する」としていたが、これは `sse.ts` を 1 行も通らず、実装が手書き `sleep()` に戻っても緑のままだった（レビューの指摘どおり）。そこで `createSseManager()` を実際に経由する形に作り直し、さらに次の 2 点を足した。
 
 - vitest の fake timers で `/sse` ハンドラを駆動し、`globalThis.AbortController` をサブクラスでスパイして client の `signal` を捕捉する。捕捉した全 signal の `getEventListeners(s, "abort").length` の**最大値が 1 以下**であることを assert する（`signals` には Hono 内部の `AbortController` も混ざるため添字決め打ちにしない）。
-- **(3 周目 / カバレッジ S-201) レスポンス body をバックグラウンドで読み捨てる。** これをしないと Hono の `TransformStream` が書き込みを 1 件だけバッファしてバックプレッシャーでループが止まり、リークが線形増加として現れない。
-- **(3 周目 / アーキ P-201) positive control を置く**（`expect(signals.length).toBeGreaterThan(0)` / `expect(sse.clientCount).toBe(1)` / `expect(counts).toContain(1)`）。`counts` には Hono 内部の signal（リスナー 0 個）が必ず混ざるため、これが無いと **`/sse` ハンドラが keep-alive 待機に到達しない実装で `counts = [0, 0]` → `max = 0` となり無検証のまま緑になる**（vacuous pass）。しかもその状態を作る変更（②の再チェック）は同じ改修に含まれている。
-- **`finally` で `sse.shutdown()` を呼ぶ**（3 周目 / アーキ S-204）。`delay()` は既定 `ref: true` かつ fake timers に駆動されないため、テスト中に張られた 30 秒タイマーが実タイマーとして残る。
+- **レスポンス body をバックグラウンドで読み捨てる。** これをしないと Hono の `TransformStream` が書き込みを 1 件だけバッファしてバックプレッシャーでループが止まり、リークが線形増加として現れない。
+- **positive control を置く**（`expect(signals.length).toBeGreaterThan(0)` / `expect(sse.clientCount).toBe(1)` / `expect(counts).toContain(1)`）。`counts` には Hono 内部の signal（リスナー 0 個）が必ず混ざるため、これが無いと **`/sse` ハンドラが keep-alive 待機に到達しない実装で `counts = [0, 0]` → `max = 0` となり無検証のまま緑になる**（vacuous pass）。しかもその状態を作る変更（②の再チェック）は同じ改修に含まれている。
+- **`finally` で `sse.shutdown()` を呼ぶ**。`delay()` は既定 `ref: true` かつ fake timers に駆動されないため、テスト中に張られた 30 秒タイマーが実タイマーとして残る。
 
 本計画で 4 実装 × body 読み捨ての有無 × 8 tick を実測した:
 
@@ -414,7 +477,7 @@ try {
 
 - 良い点: リークが構造的に消え、`sse.ts` から手書きヘルパ自体が不要になる（コード量も減る）。
 - 良い点: Node 標準 API に寄せることで、abort 時の reject（`AbortError`）と `clearTimeout` の扱いが実装依存でなくなる。既に abort 済みの signal でも即 reject する（手書き版は待ち切る）。
-- トレードオフ: **vitest の fake timers は `node:timers/promises` を差し替えない**（本計画で実測確認: `vi.advanceTimersByTimeAsync(30_000)` を繰り返しても `delay(30_000)` は解決しない。グローバル `setTimeout` は解決する）。したがって置き換え後は keep-alive ループをフェイクタイマーで進められなくなる。将来 keep-alive の周期挙動そのものをテストしたくなったら `createSseManager()` に間隔の注入口を開ける必要がある。本 Issue にその要求は無く、注入口を開けるのは要件と無関係な API 拡張なのでスコープ外とする。**なお 2 周目までは「この非対称性を AC-8 の回帰ガードとして転用する」としていたが、3 周目に body 読み捨てを入れたことで依存は外れた**（上表 (d) のとおり fake timers に駆動される実装でも通る）。したがって将来 vitest が `node:timers/promises` を駆動するようになっても AC-8 が false-red になることはない。
+- トレードオフ: **vitest の fake timers は `node:timers/promises` を差し替えない**（本計画で実測確認: `vi.advanceTimersByTimeAsync(30_000)` を繰り返しても `delay(30_000)` は解決しない。グローバル `setTimeout` は解決する）。したがって置き換え後は keep-alive ループをフェイクタイマーで進められなくなる。将来 keep-alive の周期挙動そのものをテストしたくなったら `createSseManager()` に間隔の注入口を開ける必要がある。本 Issue にその要求は無く、注入口を開けるのは要件と無関係な API 拡張なのでスコープ外とする。**なお当初は「この非対称性を AC-8 の回帰ガードとして転用する」としていたが、body 読み捨てを入れたことで依存は外れた**（上表 (d) のとおり fake timers に駆動される実装でも通る）。したがって将来 vitest が `node:timers/promises` を駆動するようになっても AC-8 が false-red になることはない。
 - トレードオフ: リークが本 Issue のハングの原因である保証は無い（機序が見つかっていない）。したがって本変更は「要件充足」ではなく「実測欠陥の解消」として位置づける。ADR-001 の主従関係は変わらない。
 - 注記: `delay()` の第 3 引数は既定で `ref: true` なので、現行の `setTimeout` と同じくイベントループを保持する。keep-alive の意味論は変わらない。
 - 注記: 手書き版は `reject(signal.reason)` でカスタム reason を透過するが、`node:timers/promises` は常に汎用 `AbortError` を投げる。`catch { break }` が reason を見ないため影響なし。
@@ -424,21 +487,21 @@ try {
 ## ADR-007: 観測性のための追加は「シグナル受信ログ 1 行」に留める（stdio drain と打ち切り時の再 `closeAllConnections()` は採用しない）
 
 ### Status
-Proposed（1 周目の Decision を 2 周目に一部撤回した ADR。撤回の経緯を残す）
+Proposed（当初の Decision を一部撤回した ADR。撤回の経緯を残す）
 
 ### Context
 
-ADR-001 で「タイムアウト発火時の `logger.warn` が真因切り分けの唯一の手掛かり」と位置づけたことから、1 周目のレビューで 3 点の対策が提案され、いずれも計画に取り込んだ。
+ADR-001 で「タイムアウト発火時の `logger.warn` が真因切り分けの唯一の手掛かり」と位置づけたことから、レビューで 3 点の対策が提案され、いずれも計画に取り込んだ。
 
 1. **警告ログが `process.exit(0)` で取りこぼされうる** → `process.exit(0)` の直前に stdout / stderr を drain する（`withTimeout(..., 200)` で有界化）。
 2. **タイムアウトで打ち切ると `server.close()` のコールバック未発火のまま resolve する** → 打ち切り時に `closeAllConnections()` を再度呼ぶ。
 3. **「そもそも SIGINT ハンドラが起動していなかった」可能性を排除できていない** → シグナル受信ログを出す。
 
-2 周目のレビューで (1) と (2) に反証が出たため、実測して確認したうえで方針を改める。
+その後 (1) と (2) に反証が出たため、実測して確認したうえで方針を改める。
 
 ### Decision
 
-**(1) stdio drain は採用しない（1 周目の決定を撤回する）。**
+**(1) stdio drain は採用しない（当初の決定を撤回する）。**
 
 理由は 2 つで、いずれも実測に基づく。
 
@@ -447,21 +510,21 @@ ADR-001 で「タイムアウト発火時の `logger.warn` が真因切り分け
 
 drain を残す選択肢（`process.stdout.on("error", () => {})` / `process.stderr.on("error", () => {})` を先に登録して EPIPE を握りつぶす）も検討したが、**要件充足に寄与しない観測性強化のために、終了パスに `await` とグローバルなエラーハンドラ登録を追加する費用対効果が見合わない**ため採らない。代わりに **`logger.warn` を `process.exit(0)` より前に呼ぶ順序を保つ**だけにとどめ、「将来シャットダウン経路に大量出力を足すと警告が欠落しうる」という残存リスクを plan.md の「リスクと注意点」に実測値付きで記載する。
 
-なお 1 周目の記述「stderr が TTY でない場合は非同期になる」は一般化しすぎだったので撤回する。Node の stdio が同期か非同期かは接続先と OS で決まり、**ファイルは同期、TTY は POSIX で同期、pipe は macOS でのみ非同期**である。上記の実測（ファイルリダイレクトでは 200KB 全量が残る）とも一致する。
+なお当初の記述「stderr が TTY でない場合は非同期になる」は一般化しすぎだったので撤回する。Node の stdio が同期か非同期かは接続先と OS で決まり、**ファイルは同期、TTY は POSIX で同期、pipe は macOS でのみ非同期**である。上記の実測（ファイルリダイレクトでは 200KB 全量が残る）とも一致する。
 
-**(2) 打ち切り時の再 `closeAllConnections()` は採用しない（1 周目の決定を撤回する）。**
+**(2) 打ち切り時の再 `closeAllConnections()` は採用しない（当初の決定を撤回する）。**
 
-呼び出し自体が安全であることは確認されている（2 回連続でも、`close()` のコールバック発火後でも throw しない）。しかし**効く場面が構成上存在しない**: ADR-002 の手順 2 でリスニングハンドルを閉じているため手順 4 以降に新規ソケットが accept されることはなく、手順 4 で destroy 済みのソケットへの再 destroy は no-op である。「打ち切りの原因が destroy し切れていないソケットである場合に効く」という 1 周目の根拠は、その状態が `destroy()` の再呼び出しで解消する保証が無いため成立しない。**無害でも実効ゼロの処理を「保険」として残すと将来の読者を誤らせる**ので削除する。
+呼び出し自体が安全であることは確認されている（2 回連続でも、`close()` のコールバック発火後でも throw しない）。しかし**効く場面が構成上存在しない**: ADR-002 の手順 1 でリスニングハンドルを閉じているため手順 4 以降に新規ソケットが accept されることはなく、手順 4 で destroy 済みのソケットへの再 destroy は no-op である。「打ち切りの原因が destroy し切れていないソケットである場合に効く」という当初の根拠は、その状態が `destroy()` の再呼び出しで解消する保証が無いため成立しない。**無害でも実効ゼロの処理を「保険」として残すと将来の読者を誤らせる**ので削除する。
 
 一方、`ServerInstance.shutdown` の doc コメントに「タイムアウト時はソケットハンドルが残りうる。プロセスを終わらせる責務は呼び出し側（CLI）にある」と明記する方針は**維持する** — 追加処理で解消できない以上、契約として書き残すことに価値がある。
 
-なお **ポート自体はリスニングハンドルを閉じた時点（ADR-002 の手順 2）で解放される**。`server.close()` を呼んだ直後、コールバック未発火の状態で同じポートに再 bind できることを 1 周目に実測確認済みなので、テストのポート衝突は起きない。`src/server/index.test.ts` の `afterEach`（`await server?.shutdown().catch(() => {})`）は変更不要で、むしろ `shutdown()` が有界になったことで teardown が無限に待つ可能性が消える。
+なお **ポート自体はリスニングハンドルを閉じた時点（ADR-002 の手順 1）で解放される**。`server.close()` を呼んだ直後、コールバック未発火の状態で同じポートに再 bind できることを実測確認済みなので、テストのポート衝突は起きない。`src/server/index.test.ts` の `afterEach`（`await server?.shutdown().catch(() => {})`）は変更不要で、むしろ `shutdown()` が有界になったことで teardown が無限に待つ可能性が消える。
 
 **(3) CLI のシグナルハンドラで受信シグナル名をログに出す（採用。挿入位置のみ変更）。**
 
 `process.on("SIGINT", handler)` はハンドラ第 1 引数にシグナル名を渡す。ハンドラを `async (signal: NodeJS.Signals) => { ... }` にし、`logger.info(\`Received ${signal}, shutting down...\`)` を 1 行出す。
 
-**挿入位置は既存の `console.log()`（空行）の後・`intro(...)` の前**とする。1 周目の「force exit 判定の直後」だと `console.log()` より前になり、実端末では `^C` のエコーと同じ行に `^C[peek] Received SIGINT, shutting down...` と連結して表示されてしまう。既存コードが `console.log()` で `^C` と `intro()` を分離している意図を壊さないため、位置を後ろにずらす。clack のバー描画（`intro` 〜 `outro` の枠）も壊さない。
+**挿入位置は既存の `console.log()`（空行）の後・`intro(...)` の前**とする。当初の「force exit 判定の直後」だと `console.log()` より前になり、実端末では `^C` のエコーと同じ行に `^C[peek] Received SIGINT, shutting down...` と連結して表示されてしまう。既存コードが `console.log()` で `^C` と `intro()` を分離している意図を壊さないため、位置を後ろにずらす。clack のバー描画（`intro` 〜 `outro` の枠）も壊さない。
 
 この 1 行の増分価値は「どのシグナルで起動したか」の識別に限られる（既存の `intro(" Shutting down... ")` の表示有無だけでも (i)/(ii) の切り分けは可能）。それでも残すのは、Issue の観測「SIGTERM では即座に終了した」の解釈に SIGINT / SIGTERM の区別が直接効くためである。真因が判明したら削除を検討する。
 
@@ -480,7 +543,7 @@ drain を残す選択肢（`process.stdout.on("error", () => {})` / `process.std
 ## ADR-008: シャットダウン予算は `shutdown()` の引数ではなく `startServer()` のオプションにする
 
 ### Status
-Proposed（レビュー 1 周目・アーキ W-003 による新規判断。ADR-005 の該当箇所を置き換える）
+Proposed（レビューを受けた新規判断。ADR-005 の該当箇所を置き換える）
 
 ### Context
 
@@ -512,7 +575,7 @@ export async function startServer(
 
 - 予算は**インスタンスの寿命に対して 1 回だけ決まる値**である。生成時に受け取れば、memo 化との矛盾が**型のレベルで**消える（「2 回目以降は無視される引数」がそもそも存在しなくなる）。
 - `ServerInstance.shutdown` は `() => Promise<void>` に戻る。ライフサイクル操作としての契約（冪等・有界・プロセス終了は呼び出し側の責務）だけが残る。
-- 既定値の解決は `options?.shutdownTimeoutMs ?? SHUTDOWN_TIMEOUT_MS` を `startServer()` の冒頭で 1 回行う。`{ shutdownTimeoutMs: undefined }` が予算ゼロ（ADR-001 の `!(timeoutMs > 0)`）に落ちない点は 1 周目の設計から変わらない。
+- 既定値の解決は `options?.shutdownTimeoutMs ?? SHUTDOWN_TIMEOUT_MS` を `startServer()` の冒頭で 1 回行う。`{ shutdownTimeoutMs: undefined }` が予算ゼロ（ADR-001 の `!(timeoutMs > 0)`）に落ちない点は当初の設計から変わらない。
 - c（`ServerConfig` にフィールドを足す）は採らない。`ServerConfig` は 3 分岐の判別可能ユニオンなので、全分岐に同じフィールドを足すことになり差分が大きい。第 2 引数なら差分は最小で、config（何を配信するか）と options（どう運用するか）の分離も自然である。
 - d（注入をやめる）は採らない。AC-3 は `shutdown()` 側の警告出力までを検証対象にしており、`withTimeout` の単体テストではそこに届かない。
 
@@ -531,11 +594,11 @@ export async function startServer(
 ## ADR-009: `shutdown()` の再入ガードを手順の同期性から独立させる
 
 ### Status
-Proposed（レビュー 1 周目・並行性 W-002 による新規判断）
+Proposed（レビューを受けた新規判断）
 
 ### Context
 
-1 周目の実装は次の形だった。
+当初の実装は次の形だった。
 
 ```ts
 shutdown() {

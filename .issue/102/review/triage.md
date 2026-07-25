@@ -28,4 +28,16 @@
 | `.issue/102/testing.md:force exit の期待` | R1 | fix | 修正後は正常系のシャットダウンが 10ms で完了するため、Ctrl+C 2 回でも force exit に到達しない。期待結果を現実に合わせる | 0 |
 | `src/index.ts:logger.info/正常系出力への混入` | R1 | wont-fix | 意図的な診断ログ（ADR、計画 1 周目 S-009）。真因未特定の本 Issue では「ハンドラが起動したか」を事後に判別できることが警告と並ぶ唯一の手掛かり。実 TTY で clack の枠描画と `^C` エコーの分離を検証済み | 0 |
 | `src/server/shutdown-process.test.ts:dist/index.mjs未起動` | R1 | wont-fix | `pretest` は tsdown を実行しないため `dist/` の存在が保証されず、テストがビルド順序に依存する。`dist/index.mjs` の起動は Phase 4 の手動確認（testing.md が既に採用）で埋める | 0 |
-| `plan.md:AC-10/手動確認未実施` | R1 | wont-fix | Phase 4 のブラウザ検証で実施する作業項目であり、実装起因の欠陥ではない | 0 |
+| `plan.md:AC-10/手動確認未実施` | R1 | wont-fix | Phase 4 のブラウザ検証で実施する作業項目であり、実装起因の欠陥ではない | 1 |
+| `src/server/routes/sse.ts:onAbort登録順序` | R1 | fix | R1 の入れ替えでは「client が `clients` に残り続ける」窓が塞がっておらず、コメントの主張も事実と不一致。`if (!closed) clients.add(client)` で塞ぐ（R2 で再指摘、判定継続） | 1 |
+| `src/server/index.ts:shutdown/エラー分離の粒度` | R2 | fix | 手順 2〜4 が単一 `try` なので手順 2 の throw が `closeAllConnections()` を巻き添えにし、毎回タイムアウト予算をフル消費する | 0 |
+| `src/server/index.ts:shutdown/失敗チャネルの上書き` | R2 | fix | 手順 2〜4 のエラーが `closing` の reject に上書きされて無言で消える。ADR-002 の「エラーは必ず届く」が無条件には成立しない | 0 |
+| `src/server/index.test.ts:エラー分離/回帰ガード` | R2 | fix | try/catch を外しても rethrow を消しても 268 全 PASS。R1 で追加した安全機構に回帰ガードが無い | 0 |
+| `src/index.shutdown-process.test.ts:タイムアウト予算` | R2 | fix | 内部予算 20s + 10s が `testTimeout: 30000` と一致し余裕ゼロ。vitest タイムアウトが先に発火すると子プロセスが孤児になる | 0 |
+| `src/lib/with-timeout.ts:配置根拠の事実誤り` | R2 | fix | R1 で差し替えた「クライアントバンドルに載る」という根拠が事実として誤り（esbuild `bundle: true` なので import 到達可能なものしか入らない）。実測で確認済み | 1 |
+| `src/server/index.ts:shutdownTimeoutMs/doc` | R2 | fix | `0` / `NaN` が「即諦めて警告」を意味することが公開 API の doc に書かれていない | 0 |
+| `src/server/index.ts:コメント過剰/PR自身の物語` | R2 | fix | コメント総量が main の 2 行から 98 行に増加。PR 自身の経緯や ADR の丸写しが混ざっている | 0 |
+| `.issue/102/adr.md:旧手順番号の残存` | R2 | fix | 改訂前の「手順 2」が 4 箇所残存。close() は手順 1 に移った | 0 |
+| `.issue/102/plan.md:実装との乖離` | R2 | fix | 型述語化 4 箇所・「watcher は残す」2 箇所・AC-3 の旧 API・ADR 一覧の 008/009 欠落 | 0 |
+| `.issue/102/testing.md:手順番号とビルドサイズ` | R2 | fix | 「手順 2 の時点で閉じている」が手順 1 に／ビルドサイズ 128.39 kB が実測 130.90 kB | 0 |
+| `PR#116本文:実装との乖離` | R2 | fix | 1 ラウンド目の修正が反映されておらず、事実と異なる記述 6 件・記述漏れ 3 件 | 0 |
