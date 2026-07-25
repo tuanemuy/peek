@@ -30,6 +30,7 @@
 | AC-8 | **SSE client 1 本あたりの `abort` リスナーが keep-alive の周回で増えない。** `createSseManager()` の `/sse` ハンドラを vitest の fake timers で駆動し、**レスポンス body をバックグラウンドで読み捨ててループを実際に回した上で**、client の `AbortSignal` に載る `abort` リスナー数が **1 以下**であることで検証する。**positive control を必ず伴う**（`sse.clientCount === 1` かつ 観測したリスナー数の中に `1` が実在すること）— これが無いと「ハンドラが keep-alive 待機に到達しない実装」でも `counts=[0,0]` → `max=0` で緑になる（vacuous pass） | アーキレビューで実測された欠陥 | 6, 7 |
 | AC-9 | 既存のシャットダウン関連テスト（冪等・並行呼び出し・シャットダウン後の接続拒否・SSE ライフサイクル）が引き続き通る | 回帰防止 | 4, 7, 8 |
 | AC-10 | 手動確認（非退行 + 観測）: `peek . --host 0.0.0.0 --port 3009` をブラウザタブ常時オープンで起動し Ctrl+C を 10 回試行して、(a) 毎回 5 秒以内に `Server stopped. Bye!` が出て終了する、(b) `Shutting down...` / `Received SIGINT, ...` の表示有無を記録する、(c) タイムアウト警告の有無を記録する | Issue 再現条件 | 5, 9 |
+| AC-11 | **シャットダウン手順 2 / 3 / 4 のいずれが throw しても、後続の手順と手順 5 の有界待機は実行され、失敗は 1 件ならそのまま / 2 件以上は `AggregateError` で呼び出し側に届く**（`serve()` / `SseManager.shutdown()` / `createFileWatcher()` をスタブして各手順に throw を注入し、`calls` の並び・経過時間・警告回数・throw された値で検証する） | 実装レビュー 2〜3 ラウンド目（エラー分離の回帰ガード） | 3, 4 |
 
 **この計画は実装レビューを受けて更新してある**（末尾「レビュー履歴 / 実装レビュー」参照）。設計判断そのものの最新の正は `adr.md` であり、本文と食い違いが見つかった場合は `adr.md` を優先する。
 
@@ -323,7 +324,10 @@ export async function startServer(
 
 ```
    const failures: unknown[] = []
-   const step = (run) => { try { run() } catch (e) { failures.push(e) } }
+   // 非同期な手順を型で拒む（下記「手順が同期であることを型で表明する」）
+   const step = <T>(run: () => T extends PromiseLike<unknown> ? never : T) => {
+     try { run() } catch (e) { failures.push(e) }
+   }
 
 1. const closing = close()    // server.close(): リスナーを閉じ、新規接続の受付を止める
 2. step(() => sse.shutdown()) // 新規 /sse を拒否し、既存ストリームを abort
@@ -343,6 +347,7 @@ export async function startServer(
 - **手順 2 / 3 / 4 は個別に捕捉する（実装レビューで追加）。** まとめて 1 つの `try` に入れると、手順 2 の throw が手順 3・4 を巻き添えにする。手順 4（`closeAllConnections()`）は「有界待機に落ちずに速く終わる」ことを担保している唯一の手順なので、これが飛ぶと毎回予算をフルに使う。フォールト注入で実測: **単一 `try`（手順 4 が飛ぶ）は 2,003ms + 警告 / 個別捕捉は 1ms + 警告なし**。
 - **失敗チャネルは配列にする（実装レビューで追加）。** 単一スロットだと、手順 5 の `await` が予算内 reject で throw した場合に捕捉済みのエラーがどこにも記録されずに消える。手順 5 も `try`/`catch` で包んで `failures` に**追加**し、**1 件ならそのまま throw**（`server.close()` のエラーが CLI の `logger.error` に届く既存挙動を維持）、**2 件以上なら `AggregateError`** にする。`Result<T, E>` は使わない（「関数の返り値としての成否」ではなく「後で throw するために保留した例外」なのでレイヤが違う）。
 - 1〜4 は同期。ただし**同期であることに安全性を依存しない**（依存しているのは 2 のフラグと 1 のリスナー閉鎖）。
+- **手順が同期であることを型で表明する（実装レビュー 3 ラウンド目で追加）。** `step(run: () => void)` は戻り値 `void` の位置に任意の値を許すため、将来どれかの手順が `Promise<void>` を返すようになっても型エラーにならず、その失敗は `failures` に載らず・手順 5 より前に完了せず・unhandled rejection になる。ADR-009 が再入ガードで「コメントだけの不変条件は採らない」と決めた基準を同じ関数内の `step()` にも適用し、`<T>(run: () => T extends PromiseLike<unknown> ? never : T)` で拒む（ADR-002）。`<T extends void>` では効かない（`T` が `void` に推論されて通る）。
 - `closeIdleConnections()` は**併用しない**。`closeAllConnections()` はアイドル接続も含む上位互換で、graceful drain をしない以上追加の意味が無い（ADR-002）。
 - **手順 4 が必要な理由は「アイドルの keep-alive ソケットが残るから」ではない（実装レビューで訂正）。** Node 19 以降の `http.Server.prototype.close` は先頭で `httpServerPreClose()` → `closeIdleConnections()` を呼んでおり（`engines` は `>=22.0.0` なので常にこの経路）、**アイドル接続は `close()` 自身が始末する**。手順 4 が要るのは**送信中の SSE レスポンスを抱えた active ソケット**に対してだけである。根拠を誤って書くと「`close()` が呼ぶなら手順 4 は不要では」と削除され、毎回 2 秒のタイムアウトに落ちるようになる。
 - **タイムアウト打ち切り時に `closeAllConnections()` を再度呼ぶことはしない**（ADR-007）。手順 1 でリスナーを閉じているため手順 4 以降に新規ソケットは accept されず、destroy 済みソケットへの再 destroy は no-op である。「効く場面が構成上存在しない」処理を保険として置かない。
@@ -427,7 +432,7 @@ shutdown() {
   - `shutdown()` の本体を「設計」節の 1〜5 の順に書き換え、各行に順序の理由をコメントで残す。**手順 2 / 3 / 4 は `step()` ヘルパで個別に捕捉し、手順 5 の reject も `failures` に追加して、1 件ならそのまま throw / 2 件以上なら `AggregateError` にする。** タイムアウト時は `logger.warn` を出す（AC-3）。**打ち切り時の再 `closeAllConnections()` は入れない。**
   - **再入ガードを `Promise.withResolvers()` で先に公開する**（ADR-009）。手順本体は `runShutdown()` という名前付き関数に出し、`shutdown()` は memo とガードだけを持つ。
   - この段階では `sse.closeAll()` の呼び出し名はそのまま（改名はグループ B のステップ 6）。
-- **理由:** AC-1 / AC-2 / AC-3 / AC-4。原因未特定に対する最終保証（タイムアウト）と、順序の構造的修正を成立させる。
+- **理由:** AC-1 / AC-2 / AC-3 / AC-4 / AC-11。原因未特定に対する最終保証（タイムアウト）と、順序の構造的修正を成立させる。
 
 ### 4. 終了性・タイムアウト警告テスト
 
@@ -443,13 +448,17 @@ shutdown() {
     - **アサーション（実装レビューで強化）**: exit code 0 と経過時間だけでは判別性が無い — `shutdown()` の同期部が ref 付きハンドルを全部解放するため、**永久に settle しない `shutdown()` でもイベントループが枯渇して Node が自分で exit 0 する**（実測: 6ms・`Server stopped` なし）。したがって (a) 出力に `Server stopped` が含まれること（`outro()` は `await server.shutdown()` の直後・`process.exit(0)` の直前なので、これが settle の証拠になる）、(b) exit code が 0、(c) 経過時間が **AC-1 の 5 秒ではなく有界待機の予算 2 秒未満**（タイムアウトに救われただけの終了を落とすため）、(d) 出力に `did not close within` が**含まれない**（AC-3 の偽陽性なしをプロセスレベルでも見る）、の 4 点を assert する。
   - **追加（AC-4）**: 2 本立てにする（実装レビューで追加）。
     1. **end-to-end 側**: `const p = server.shutdown();` を await せずに `await expect(fetch(url)).rejects.toThrow();` してから `await p;`。ただしこれは「`shutdown()` が返った後に接続が拒否される」ことしか言えない（`fetch` が TCP connect に至るのは数 ms 後）。
-    2. **手順順序側**: `serve()` を `vi.doMock` でスタブし、`close` / `closeAllConnections` の呼び出しを配列に記録する。`instance.shutdown()` の**直後に同期的に** `calls` を読み、`["close", "closeAllConnections"]` であることを assert する。手順 1〜4 はすべて同期なので実ソケット越しの観測では順序を判別できず、**スタブが順序を観測可能にする唯一の手段**である。`const closing = close()` を `closeAllConnections()` の後ろに戻すとここが落ちる。
+    2. **手順順序側**: `serve()` / `SseManager.shutdown()` / `createFileWatcher()` を `vi.doMock` でスタブし、手順 1〜4 の呼び出しを配列に記録する。`instance.shutdown()` の**直後に同期的に** `calls` を読み、`["close", "sse.shutdown", "watcher.close", "closeAllConnections"]` であることを assert する。手順 1〜4 はすべて同期なので実ソケット越しの観測では順序を判別できず、**スタブが順序を観測可能にする唯一の手段**である。`const closing = close()` を `closeAllConnections()` の後ろに戻すとここが落ちる。**4 手順すべてを記録する**（手順 3 = `watcher.close()` は実装レビュー 3 ラウンド目で追加した。それまでは手順 3 を削除しても全テストが通っていた）。
   - **追加（AC-3）**: `src/server/index.test.ts` に 2 ケース追加する。
     1. SSE 接続を張った状態で `startServer({ ...baseConfig, port }, { shutdownTimeoutMs: 0 })` のサーバーに対して引数なしの `shutdown()` を呼ぶと、`vi.spyOn(console, "warn")` が「期限内に close しなかった」旨のメッセージを受け取る。**本計画で同形の手順を実測: 10/10 で timed-out 分岐 + 警告出力。**
     2. SSE 接続を張った状態で既定タイムアウト（`shutdown()`）を呼ぶと `console.warn` が **1 度も呼ばれない**（偽陽性が無いことの確認）。**本計画で実測: 10/10 で completed・警告 0 件。**
     - スパイ対象は `logger` オブジェクトではなく `console.warn` にする（`logger` は `as const` で `readonly` 宣言されているため）。
+  - **追加（AC-11、実装レビュー 2〜3 ラウンド目）**: `describe("shutdown error isolation")` に 3 ケース。手順順序テストと同じスタブ土台（`withStubbedServer`）を使い、各手順に throw を注入する。
+    1. 手順 2（`sse.shutdown()`）が throw し、`close()` のコールバックを永久に呼ばない状態で `shutdownTimeoutMs: 30` → 後続手順が `calls` に載る / 経過時間が予算以上 / 警告 1 回 / 失敗 1 件なので `AggregateError` に**包まれない**こと。
+    2. 手順 3（`watcher.close()`）と手順 4（`closeAllConnections()`）が両方 throw → `calls` は 4 手順すべて / `AggregateError.errors` に 2 件とも順序どおり載ること。**実運用で最も throw しうるのは手順 3（`fs.FSWatcher` の close）なのでここに注入する。**
+    3. 手順 4 が throw し、`closing` も予算内に reject → 手順 5 の失敗が上書きではなく**追加**されて `AggregateError` に 2 件載ること。
   - 既存 5 ケースはそのまま通ることを確認する（AC-9）。
-- **理由:** AC-1 / AC-3 / AC-4 / AC-9。Issue の唯一の要件（プロセスが終了する）を初めて回帰テスト化し、タイムアウト警告経路も自動検証に載せる。CI matrix（Node 22 / 24）により Node 24 上でも自動実行される。
+- **理由:** AC-1 / AC-3 / AC-4 / AC-9 / AC-11。Issue の唯一の要件（プロセスが終了する）を初めて回帰テスト化し、タイムアウト警告経路も自動検証に載せる。CI matrix（Node 22 / 24）により Node 24 上でも自動実行される。
 
 ---
 
@@ -609,7 +618,8 @@ shutdown() {
 | プロセス終了性 | AC-1 | E2E（`src/index.shutdown-process.test.ts`、`spawn` + 実 SIGINT） | SSE 接続中に SIGINT を 1 回送って `Server stopped` が出力される / exit code 0 / 予算 2 秒未満 / タイムアウト警告なし。CI matrix により Node 22 / 24 の両方で実行される |
 | `withTimeout` | AC-2, AC-3 | 単体（`src/lib/with-timeout.test.ts`） | 解決 / 永久保留時のタイムアウト解決 / 予算ゼロ・`NaN` の決定的タイムアウト / 予算内 reject の透過 / unhandled rejection なし / 期限内 settle 時にタイマーが残らない |
 | タイムアウト警告 | AC-3 | 統合（`src/server/index.test.ts`、実ポート） | `startServer(config, { shutdownTimeoutMs: 0 })` で `console.warn` が発火 / 既定予算では発火しない |
-| シャットダウン契約 | AC-4, AC-9 | 統合（`src/server/index.test.ts`、実ポート + `serve()` スタブ） | 呼び出し直後に新規接続を拒否 / 最初の `await` の前に `close` → `closeAllConnections` の順で走る / 冪等 / 並行呼び出し |
+| シャットダウン契約 | AC-4, AC-9 | 統合（`src/server/index.test.ts`、実ポート + `serve()` / `SseManager.shutdown()` / `createFileWatcher()` スタブ） | 呼び出し直後に新規接続を拒否 / 最初の `await` の前に `close` → `sse.shutdown` → `watcher.close` → `closeAllConnections` の順で 4 手順すべてが走る / 冪等 / 並行呼び出し |
+| 手順ごとのエラー分離 | AC-11 | 統合（`src/server/index.test.ts`、同じスタブ） | 手順 2 / 3 / 4 のいずれが throw しても後続手順と有界待機が走る（`calls` の 4 要素 + 経過時間 + 警告 1 回）/ 失敗 1 件はそのまま throw / 2 件以上は `AggregateError` に両方載る |
 | SSE シャットダウンフラグ | AC-5, AC-6 | 単体（`src/server/routes/sse.test.ts`、Hono `app.request`） | シャットダウン後の `/sse` が 503 かつストリーム未生成 / `clientCount` が増えない |
 | per-client abort の維持 | AC-7 | 単体（`src/server/routes/sse.test.ts`） | `shutdown()` 後にレスポンス body が 500ms 以内に EOF（`done: true`）に達する |
 | keep-alive の待機実装 | AC-8 | 単体（`src/server/routes/sse.test.ts`） | body を読み捨ててループを周回させても client 1 本あたりの abort リスナーが 1 個を超えない（手書き `sleep()` 再導入の回帰ガード）。**positive control（`clientCount === 1` / リスナー数 1 の実在）を必ず伴う** |
@@ -617,6 +627,7 @@ shutdown() {
 **間接検証にとどまるもの（明記事項）**
 
 - **AC-2** は `shutdown()` 自体に「永久に解決しない `server.close()`」を注入するテストを持たない（実サーバーでその状況を作れないため）。担保は「`withTimeout` の単体テストが有限時間 settle を決定的に検証する」+「`shutdown()` の唯一の待機点が `withTimeout(closing, shutdownTimeoutMs)` であるというコード上の構成」の組み合わせである。後者はレビューで確認する。
+- **`/sse` ハンドラの `stream.onAbort(cleanup)` 先行登録と `if (!closed) clients.add(client)` ガード**（実装レビュー 2 ラウンド目で追加）には自動テストが無い。**現行の Hono では到達不能**だからである（`onAbort` の登録から `add` までに `await` が無く、`StreamingApi.abort()` の唯一の到達経路である `responseReadable` の `cancel` はコールバックの同期部より後にしか走らない）。窓を作るには production 側に人工的な `await` を入れるしかなく、それは ADR-003 のフォールト注入（`add`→`onAbort` = 1 / `onAbort`→`add` = 1 / 採用形 = 0）で実測済みである。**テストを足さないことが妥当な箇所**であり、漏れではない。
 - **AC-8** は「手書き `sleep()` に戻ると落ちる」「`/sse` ハンドラが keep-alive 待機に到達しないと落ちる」ことを保証するが、`node:timers/promises` 版で N 回正常完了してもリークしないことを実行時に確認しているわけではない（fake timers が `node:timers/promises` を駆動できないため、(a) のループは最初の待機で止まる）。後者は ADR-006 の直接実測（25 回完了で手書き 25 個 / 標準 API 0 個）で担保する。
 
 **自動テストで担保できないもの（手動確認へ）**
@@ -732,10 +743,13 @@ shutdown() {
 - **`shutdown()` の再入ガードを `Promise.withResolvers()` に変えた**（ADR-009 新設）。`shutdownPromise = (async () => {...})()` は代入が最初の `await` の後になるため、手順 1〜4 の実行中は memo が空だった。「同期実行だから安全」はこの PR が消そうとしている依存そのものなので、`shutdown()` 本体にも同じ基準を適用した。
 - **`withTimeout` の配置根拠を撤回し、doc コメントから外した**（ADR-001 改訂）。「タイマーという副作用をスケジュールするから」も「`src/core/` はクライアントバンドルに入るから」も成立しない（後者は実測で反証済み）。正しい結論は「どちらでも壊れない」なので、コメントには ADR への参照 1 行だけを残す。あわせて reject 透過の契約を「予算内に reject した場合のみ」に精密化した。
 - **手順 4（`closeAllConnections()`）が必要な理由を訂正した**（ADR-002 改訂）。「アイドルの keep-alive ソケットが残るから」ではない — Node 19 以降の `http.Server.prototype.close` は内部で `closeIdleConnections()` を呼ぶ。必要なのは送信中の SSE を抱えた active ソケットのためである。
+- **`step()` のシグネチャを条件型にして非同期な手順を型で拒むようにした**（ADR-002 改訂、3 ラウンド目）。`run: () => void` は任意の戻り値を許すため、手順が async 化されても型が通ってしまい、失敗が `failures` に載らないまま unhandled rejection になる。ADR-009 の「コメントだけの不変条件は採らない」という基準を `step()` にも適用した。
 
 **テストの変更**:
 
 - **`src/server/shutdown-process.test.ts` を `src/index.shutdown-process.test.ts` に移動した**（テスト対象は CLI エントリであり、`src/lib/watcher.error-handling.test.ts` の aspect-suffix 前例と整合する）。
 - **AC-1 テストの判別性を強化した**。exit code 0 と経過時間だけでは、永久に settle しない `shutdown()` でもイベントループ枯渇で Node が自分で exit 0 する（実測 6ms）ため判別できない。`Server stopped` の出力・予算 2 秒未満・`did not close within` を含まないこと、の 3 点を追加した。起動待ちのポーリングにも子プロセスの死亡検出と `AbortSignal.timeout` を足した。
-- **AC-4 に手順順序テストを追加した**。手順 1〜4 はすべて同期なので実ソケット越しでは順序を観測できない。`serve()` をスタブして `["close", "closeAllConnections"]` を `shutdown()` の直後に同期的に読む形にした。
+- **AC-4 に手順順序テストを追加した**。手順 1〜4 はすべて同期なので実ソケット越しでは順序を観測できない。`serve()` / `SseManager.shutdown()` / `createFileWatcher()` をスタブして `["close", "sse.shutdown", "watcher.close", "closeAllConnections"]` を `shutdown()` の直後に同期的に読む形にした。
+- **AC-11（手順ごとのエラー分離）を新設し、回帰ガード 3 ケースを追加した**。2 ラウンド目のレビューで「R1 で足した安全機構に回帰ガードが 1 つも無い（try/catch を外しても rethrow を消しても全 PASS）」と実測で指摘されたため。判別線は `calls` の並びだけでなく**経過時間**にもある（失敗の throw を手順 5 の前に移す変異は `calls` では捕まらず `elapsedMs >= 25` だけが捕捉する）。
+- **手順 3（`watcher.close()`）を回帰ガードに載せた**（3 ラウンド目）。それまで `calls` の `toEqual` は 4 手順のうち 3 手順しか固定しておらず、**手順 3 を削除しても全テストが通っていた**。`createFileWatcher()` のスタブを 1 つ足して `calls` に `watcher.close` を記録し、エラー注入口（`onWatcherClose`）も開けた（実運用で最も throw しうるのは `fs.FSWatcher` の close なのに、注入口が手順 2 / 4 にしか無かった）。
 - **AC-8 テストの body 読み捨てを fail-fast にした**（`if (reader)` だと reader が無いとき黙って判別マージンの無い旧形に退化する）。

@@ -12,6 +12,7 @@ import {
   it,
   vi,
 } from "vitest";
+import type { FileWatcherHandle } from "../lib/watcher.js";
 import type { ServerInstance, StartServerOptions } from "./index.js";
 import { startServer } from "./index.js";
 import type { SseManager } from "./routes/sse.js";
@@ -165,11 +166,12 @@ type ShutdownStubs = {
   readonly onClose?: (cb?: (err?: Error) => void) => void;
   readonly onCloseAllConnections?: () => void;
   readonly onSseShutdown?: () => void;
+  readonly onWatcherClose?: () => void;
 };
 
 /**
- * Boots `startServer()` against a stubbed `serve()` and a stubbed
- * `SseManager.shutdown()`, recording each shutdown step in `calls` as it runs
+ * Boots `startServer()` against a stubbed `serve()`, `SseManager.shutdown()`
+ * and `FileWatcherHandle.close()`, recording steps 1-4 in `calls` as they run
  * and letting a test make any of them throw.
  *
  * Steps 1-4 are all synchronous and step 4 destroys the very sockets an
@@ -230,6 +232,27 @@ async function withStubbedServer(
     };
   });
 
+  vi.doMock("../lib/watcher.js", async (importOriginal) => {
+    const actual = await importOriginal<typeof import("../lib/watcher.js")>();
+    return {
+      ...actual,
+      createFileWatcher: (): FileWatcherHandle => {
+        const watcher = actual.createFileWatcher();
+        return {
+          ...watcher,
+          close: () => {
+            calls.push("watcher.close");
+            if (stubs.onWatcherClose) {
+              stubs.onWatcherClose();
+              return;
+            }
+            watcher.close();
+          },
+        };
+      },
+    };
+  });
+
   try {
     const { startServer } = await import("./index.js");
     const instance = await startServer({ ...baseConfig, port: 0 }, options);
@@ -237,6 +260,7 @@ async function withStubbedServer(
   } finally {
     vi.doUnmock("@hono/node-server");
     vi.doUnmock("./routes/sse.js");
+    vi.doUnmock("../lib/watcher.js");
     vi.resetModules();
   }
 }
@@ -267,7 +291,12 @@ describe("shutdown step order", () => {
       shutting.catch(() => {});
       // Read before awaiting: anything recorded here happened before the first
       // `await` inside `shutdown()`, which is the contract AC-4 states.
-      expect(calls).toEqual(["close", "sse.shutdown", "closeAllConnections"]);
+      expect(calls).toEqual([
+        "close",
+        "sse.shutdown",
+        "watcher.close",
+        "closeAllConnections",
+      ]);
       await shutting;
     });
   });
@@ -302,10 +331,11 @@ describe("shutdown error isolation", () => {
           const error = await rejectionOf(instance.shutdown());
           const elapsedMs = Date.now() - startedAt;
 
-          // The step after the failing one ran...
+          // The steps after the failing one ran...
           expect(calls).toEqual([
             "close",
             "sse.shutdown",
+            "watcher.close",
             "closeAllConnections",
           ]);
           // ...the bounded wait ran and expired (a shutdown that skipped it
@@ -329,8 +359,10 @@ describe("shutdown error isolation", () => {
   it("aggregates two failing steps instead of losing one to the other", async () => {
     await withStubbedServer(
       {
-        onSseShutdown: () => {
-          throw new Error("sse boom");
+        // Step 3 is the one most likely to throw for real (it closes the
+        // `fs.FSWatcher` handles), so inject there rather than into step 2.
+        onWatcherClose: () => {
+          throw new Error("watcher boom");
         },
         onCloseAllConnections: () => {
           throw new Error("socket boom");
@@ -340,9 +372,14 @@ describe("shutdown error isolation", () => {
       async (instance, calls) => {
         const error = await rejectionOf(instance.shutdown());
 
-        expect(calls).toEqual(["close", "sse.shutdown", "closeAllConnections"]);
+        expect(calls).toEqual([
+          "close",
+          "sse.shutdown",
+          "watcher.close",
+          "closeAllConnections",
+        ]);
         expect(error).toBeInstanceOf(AggregateError);
-        expect(messagesOf(error)).toEqual(["sse boom", "socket boom"]);
+        expect(messagesOf(error)).toEqual(["watcher boom", "socket boom"]);
       },
     );
   });

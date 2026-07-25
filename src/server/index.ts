@@ -216,7 +216,11 @@ export async function startServer(
   // wait itself. Failures are collected so none of them is lost to another.
   const runShutdown = async (): Promise<void> => {
     const failures: unknown[] = [];
-    const step = (run: () => void) => {
+    // A step must be synchronous: an async one would neither land its failure
+    // in `failures` nor finish before step 5. The conditional type is what
+    // rejects it — `() => void` accepts any return value, and `<T extends void>`
+    // infers `T = void` and passes too.
+    const step = <T>(run: () => T extends PromiseLike<unknown> ? never : T) => {
       try {
         run();
       } catch (error) {

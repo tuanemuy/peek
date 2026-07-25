@@ -41,3 +41,8 @@
 | `.issue/102/plan.md:実装との乖離` | R2 | fix | 型述語化 4 箇所・「watcher は残す」2 箇所・AC-3 の旧 API・ADR 一覧の 008/009 欠落 | 0 |
 | `.issue/102/testing.md:手順番号とビルドサイズ` | R2 | fix | 「手順 2 の時点で閉じている」が手順 1 に／ビルドサイズ 128.39 kB が実測 130.90 kB | 0 |
 | `PR#116本文:実装との乖離` | R2 | fix | 1 ラウンド目の修正が反映されておらず、事実と異なる記述 6 件・記述漏れ 3 件 | 0 |
+| `src/server/index.test.ts:手順3/回帰ガード` | R3 | fix | `watcher.close()` だけが両方向で無検証（削除しても 271 passed）。`withStubbedServer` の docstring も事実と不一致 | 0 |
+| `src/server/index.ts:step/非同期手順の型拒否` | R3 | fix | 将来どれかの手順が `Promise<void>` を返すと失敗が `failures` に載らず unhandled rejection になる。型注釈 1 行で塞げる（tsgo で動作確認済み） | 0 |
+| `src/index.ts:テスト都合コメント` | R3 | fix | テスト側に 11 行で書かれている内容の劣化コピー 4 行。定数共有は spawn する E2E なので不可 | 0 |
+| `.issue/102/testing.md:項目4の観察時間` | R3 | fix | 再接続の停止は約 181 秒後なので「2 分間観察」では確認できず、正常な挙動を FAIL と記録しうる | 0 |
+| `.issue/102/plan.md:R3追加分の未追随` | R3 | fix | テスト方針表・順序テストの期待値・`shutdown error isolation` が未記載 | 0 |

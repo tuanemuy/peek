@@ -186,10 +186,7 @@ $ peek README.md --css ./custom.css --no-open`,
       } catch (e: unknown) {
         logger.error("Failed to shut down server:", e);
       }
-      // `src/index.shutdown-process.test.ts` asserts on "Server stopped": it is
-      // the only externally visible evidence that `shutdown()` settled (exit
-      // code 0 alone does not prove it). Keep that substring if the wording
-      // changes.
+      // "Server stopped" is asserted by src/index.shutdown-process.test.ts.
       outro(pc.green("Server stopped. Bye!"));
       process.exit(0);
     };
