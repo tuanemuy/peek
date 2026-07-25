@@ -27,8 +27,7 @@ const STARTUP_TIMEOUT_MS = 10_000;
 const SSE_CONNECT_TIMEOUT_MS = 5_000;
 const EXIT_TIMEOUT_MS = 5_000;
 
-// Duplicated from `server/index.test.ts` on purpose — extracting a shared
-// helper is out of scope for this change.
+// Duplicated from `server/index.test.ts` on purpose.
 function getFreePort(): Promise<number> {
   return new Promise((resolve, reject) => {
     const srv = createServer();

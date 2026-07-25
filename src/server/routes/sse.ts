@@ -92,7 +92,6 @@ export function createSseManager(): SseManager {
         return;
       }
 
-      // Keep connection alive with comment lines
       while (!closed) {
         try {
           await delay(KEEP_ALIVE_INTERVAL_MS, undefined, {

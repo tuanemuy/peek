@@ -40,7 +40,7 @@ describe("SSE connection lifecycle", () => {
     sse = createSseManager();
     expect(sse.clientCount).toBe(0);
 
-    // Initiate SSE connection (non-blocking — response is a stream)
+    // Not awaited — the response is a stream.
     sse.app.request("/sse");
     // Allow microtask queue to flush so the stream handler registers the client
     await new Promise((resolve) => setTimeout(resolve, 50));
@@ -57,7 +57,6 @@ describe("SSE connection lifecycle", () => {
 
     sse.broadcast("file-changed", '{"path":"test.md"}');
 
-    // Read partial body — the SSE stream should contain the broadcast event
     const reader = res.body?.getReader();
     if (!reader) throw new Error("No reader");
 
