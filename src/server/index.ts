@@ -1,10 +1,14 @@
+import type { Server as HttpServer } from "node:http";
+import type { ServerType } from "@hono/node-server";
 import { serve } from "@hono/node-server";
 import { Hono } from "hono";
 import type { FileTreeCache } from "../lib/file-tree-cache.js";
 import { createFileTreeCache } from "../lib/file-tree-cache.js";
+import { logger } from "../lib/logger.js";
 import type { ResolvedStyles } from "../lib/styles.js";
 import type { FileWatcherHandle } from "../lib/watcher.js";
 import { createFileWatcher } from "../lib/watcher.js";
+import { withTimeout } from "../lib/with-timeout.js";
 import { faviconBase64 } from "./renderer/favicon.js";
 import type { ApiConfig } from "./routes/api.js";
 import { createApiRoutes } from "./routes/api.js";
@@ -39,11 +43,36 @@ export type ServerConfig =
     };
 
 export type ServerInstance = {
-  readonly close: () => Promise<void>;
   readonly watcher: FileWatcherHandle;
-  readonly sseCloseAll: () => void;
-  readonly shutdown: () => Promise<void>;
+  /**
+   * Stops everything: SSE streams, the file watcher and the HTTP server.
+   *
+   * Memoized — the first call wins, so `timeoutMs` is ignored on later calls.
+   * Always settles within `timeoutMs` (default `SHUTDOWN_TIMEOUT_MS`). When the
+   * budget elapses, sockets may still be alive; ending the process is the
+   * caller's (the CLI's) responsibility.
+   */
+  readonly shutdown: (options?: {
+    readonly timeoutMs?: number;
+  }) => Promise<void>;
 };
+
+/**
+ * Upper bound for waiting on `server.close()`. Normally it resolves within a
+ * tick after `closeAllConnections()`, so this is mostly margin for slow
+ * environments — short enough to keep Ctrl+C responsive, long enough not to
+ * warn on healthy shutdowns.
+ */
+const SHUTDOWN_TIMEOUT_MS = 2_000;
+
+/**
+ * `serve()` returns `ServerType` (http.Server | Http2Server | Http2SecureServer);
+ * `closeAllConnections` / `closeIdleConnections` exist only on `http.Server`.
+ * peek always creates a plain HTTP server, so this narrows to that branch.
+ */
+function isHttpServer(server: ServerType): server is HttpServer {
+  return "closeAllConnections" in server;
+}
 
 type AppContext =
   | {
@@ -168,7 +197,7 @@ export async function startServer(
     };
     const onError = (err: Error) => {
       server.removeListener("listening", onListening);
-      sse.closeAll();
+      sse.shutdown();
       watcher.close();
       reject(err);
     };
@@ -176,27 +205,43 @@ export async function startServer(
     server.once("error", onError);
   });
 
-  const close = () =>
-    new Promise<void>((resolve, reject) => {
+  // Memoized: calling `server.close()` twice makes the second callback fail
+  // with ERR_SERVER_NOT_RUNNING.
+  let closePromise: Promise<void> | undefined;
+  const close = () => {
+    closePromise ??= new Promise<void>((resolve, reject) => {
       server.close((err) => (err ? reject(err) : resolve()));
     });
-  const sseCloseAll = () => sse.closeAll();
-
+    return closePromise;
+  };
   let shutdownPromise: Promise<void> | undefined;
 
   return {
-    close,
     watcher,
-    sseCloseAll,
-    shutdown() {
+    shutdown(options) {
       if (shutdownPromise) return shutdownPromise;
+      const timeoutMs = options?.timeoutMs ?? SHUTDOWN_TIMEOUT_MS;
       shutdownPromise = (async () => {
-        sseCloseAll();
+        // 1. Refuse new /sse requests and abort the streams already running.
+        sse.shutdown();
+        // 2. Stop the listener before anything that could trigger a reconnect,
+        //    so a browser reacting to step 4 can never be accepted again.
+        const closing = close();
+        // 3. No further file events, hence no further broadcasts.
         watcher.close();
-        if ("closeAllConnections" in server) {
+        // 4. Destroy every remaining socket (active and idle). Without this,
+        //    keep-alive sockets stay open and `server.close()` waits forever.
+        if (isHttpServer(server)) {
           server.closeAllConnections();
         }
-        await close();
+        // 5. Wait, but never indefinitely — the root cause of the reported hang
+        //    is unknown, so a bounded wait is what guarantees termination.
+        const outcome = await withTimeout(closing, timeoutMs);
+        if (outcome.status === "timed-out") {
+          logger.warn(
+            `HTTP server did not close within ${timeoutMs}ms — giving up and leaving the remaining sockets to the caller.`,
+          );
+        }
       })();
       return shutdownPromise;
     },
