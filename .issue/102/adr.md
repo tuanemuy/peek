@@ -122,10 +122,10 @@ Issue には 3 つの修正案が挙がっている。
 
 ---
 
-## ADR-002: `server.close()` を手順 1 に置き、手順ごとにエラーを分離する（`closeIdleConnections()` は併用しない）
+## ADR-002: `server.close()` を手順 1 に置く（`closeIdleConnections()` は併用しない）
 
 ### Status
-Proposed（レビューで手順順序を改訂し、エラー分離を追加した後、分離の粒度と失敗の集約方法、および `step()` の型による手順の同期性の表明をさらに改訂）
+Proposed（レビューで手順順序を改訂。その後レビューで積み上げた**手順ごとのエラー分離は撤回した** — 経緯と理由は Consequences の「エラー分離の撤回」に記録する）
 
 ### Context
 
@@ -138,62 +138,18 @@ Proposed（レビューで手順順序を改訂し、エラー分離を追加し
 順序を次のように変える。
 
 ```
-   const failures: unknown[] = []
-   const step = <T>(run: () => T extends PromiseLike<unknown> ? never : T) => {
-     try { run() } catch (error) { failures.push(error) }
-   }
-
 1. const closing = close()               // server.close(): リスナー停止（新規接続の受付を止める）
-2. step(() => sse.shutdown())            // 新規 /sse を拒否し、既存ストリームを abort
-3. step(() => watcher.close())           // これ以上 broadcast を発生させない
-4. step(() => { if ("closeAllConnections" in server) server.closeAllConnections() })
+2. sse.shutdown()                        // 新規 /sse を拒否し、既存ストリームを abort
+3. watcher.close()                       // これ以上 broadcast を発生させない
+4. if ("closeAllConnections" in server) server.closeAllConnections()
                                          // 送信中の SSE を抱えた active ソケットを destroy
-5. try {
-     const outcome = await withTimeout(closing, shutdownTimeoutMs)
-     if (outcome.status === "timed-out") logger.warn(...)  // 追加の後始末はしない（ADR-007）
-   } catch (error) { failures.push(error) }
-
-   if (failures.length === 1) throw failures[0]
-   if (failures.length > 1) throw new AggregateError(failures, "Failed to shut down the server.")
+5. const outcome = await withTimeout(closing, shutdownTimeoutMs)
+   if (outcome.status === "timed-out") logger.warn(...)  // 追加の後始末はしない（ADR-007）
 ```
 
 **`close()` を手順 1 に置く（レビューを受けた改訂）。** 当初の計画は `sse.shutdown()` を手順 1、`close()` を手順 2 としていたが、これは**この ADR 自身が掲げる根拠と矛盾していた**。旧手順 2（`close()`）のコメントは「再接続を誘発しうる操作より前にリスナーを止める」と書いていたのに、その前に走る `sse.shutdown()` こそが、接続中の SSE ストリームを全部終端させてブラウザの `onerror` → 自前 `setTimeout(connect, delay)` を誘発する操作である（`src/client/lib/sse.ts` / `src/server/renderer/html-document.tsx`）。つまり不変条件は「手順 1〜4 の間に `await` が無い」という**偶然**によってのみ守られており、ADR-001 が消そうとしている依存そのものだった。`close()` を先頭に置けば根拠と実装が一致する。**Issue 本文の修正案 1（「まず `server.close()` を呼んで新規接続の受付を止めてから、SSE ストリーム / ソケットを閉じる」）とも一致する。**
 
 入れ替えで壊れるものが無いことは確認済みである。`sse.shutdown()` は `shuttingDown` フラグを立てて `clients` を走査するだけで、リスナー閉鎖の前後を問わず取りこぼさない（ADR-003 の二重チェック）。むしろリスナーを先に閉じることで、シャットダウン後の `/sse` は 503 に到達する前に TCP レベルで拒否されるようになる。
-
-**エラー分離は「手順 2〜4 をまとめて 1 つの `try` に入れる」ではなく「手順ごとに個別に捕捉する」。** 旧構造では手順 1〜4 のいずれかが throw すると `withTimeout` に到達せず、(a) `closing` に reject ハンドラが一切付かないまま残り（unhandled rejection の芽）、(b) 有界待機が行われないままシャットダウンが失敗する。`close()` を手順 1 に移すことで「`closing` が生成されない」経路は消え、手順 2〜4 を単一の `try` で囲むことで (b) も消えた。**しかしそこで止めると、手順 2 の throw が手順 3・4 を巻き添えにする。** 手順 4（`closeAllConnections()`）は「有界待機に落ちずに速く終わる」ことを担保している唯一の手順なので、これが飛ぶと毎回タイムアウト予算をフルに使うことになる。**分離の粒度が目的と合っていなかった。**
-
-フォールト注入で実測した（隔離 worktree、実施後に撤去。SSE 接続 1 本を張った状態、予算は既定の 2,000ms）:
-
-| 構造 | 手順 2 に throw を注入したときの `shutdown()` 所要時間 |
-|---|---|
-| 手順 4 が飛ぶ（単一 `try`／手順 4 を無効化した対照） | **2,003ms**（`did not close within 2000ms` の警告付き） |
-| 手順ごとに個別捕捉（採用形） | **1ms**（警告なし。手順 4 が走るため） |
-
-したがって **`step(run)` ヘルパで手順 2 / 3 / 4 をそれぞれ独立に捕捉する**。どの手順が失敗しても残りの手順は必ず実行され、手順 5 の有界待機にも必ず到達する。
-
-**`step()` は「手順は同期である」という不変条件を型で表明する（レビュー 3 ラウンド目での改訂）。** 素朴な `step(run: () => void)` は、TypeScript が戻り値型 `void` の位置に任意の値を許すため**非同期な手順を拒めない**。将来どれかの手順が `Promise<void>` を返すようになると、`run()` は throw しないので `catch` は空振りし、(a) 失敗が `failures` に載らず、(b) 手順 5 の有界待機より前に完了する保証が消え（AC-4 と再入ガードの前提も崩れる）、(c) 誰も掴まない promise が unhandled rejection になる。Node 22 の既定は `--unhandled-rejections=throw` なので、シャットダウン中にプロセスがクラッシュして AC-1（exit code 0）が直接壊れる。既存の順序テストはスタブが同期的に記録するため**この退行を検出できない**。
-
-ADR-009 は再入ガードの選択肢 a（不変条件をコメントに書くだけ）を「守らせる手段がレビュアーの目しかない」として却下している。同じ関数内の `step()` にその基準を適用しないのは一貫性を欠くので、シグネチャを条件型にする:
-
-```ts
-const step = <T>(run: () => T extends PromiseLike<unknown> ? never : T) => { ... }
-```
-
-`T` は条件型の両分岐から推論されるため、`() => Promise<void>` を渡すと `T = Promise<void>` → 戻り値型が `never` に評価されて `TS2322: Type 'Promise<void>' is not assignable to type 'never'.` で落ちる（tsgo で実測）。`<T extends void>(run: () => T)` は**効かない** — `T` が `void` に推論されて `Promise<void>` も通ってしまう（実測）。現在の 3 手順（すべて `void` 戻り）はそのまま通る。コストは型注釈 1 行と、なぜこの型なのかを説明する 4 行のコメントだけである。
-
-**失敗チャネルは 1 本ではなく配列にする。** 捕捉したエラーを `{ error: unknown } | undefined` という単一スロットに入れる形だと、`withTimeout(closing, ...)` が予算内に reject した場合に `await` がそのまま throw して `if (failure) throw failure.error` に到達せず、**捕捉済みのエラーがどこにも記録されずに消える**。旧構造でのフォールト注入（手順に throw を注入しつつ `close()` を 5ms 後に reject させる）でも、`shutdown()` が reject した値は `close()` 側のエラーだけだった。独立した 2 つの失敗が 1 つのスロットを奪い合う構造だったので、**両方を保持できる形に変える**。
-
-- 手順 5 も `try`/`catch` で包み、`closing` の reject を `failures` に**追加**する（丸ごと握り潰さない）。この経路ではタイムアウト警告は出さない — 予算内に reject したのであって「閉じられなかった」わけではないため。
-- 失敗が 1 件なら**そのまま throw する**。`server.close()` のエラーが CLI の `logger.error` にそのまま届く既存挙動は、これで完全に維持される（実測確認済み）。
-- 失敗が 2 件以上なら `AggregateError` で throw する。実測で `AggregateError.errors` に `["STEP2-FAILED", "CLOSE-FAILED"]` の両方が入ることを確認した。
-
-**なぜ `AggregateError` か（他の選択肢との比較）。**
-
-- **`logger.error` で個別に記録する** — 失敗は残らず出力されるが、`shutdown()` はサーバー層であり、エラーの提示先を決めるのは CLI 層の責務である（ADR-001 で `process.exit` を層から追い出したのと同じ理由）。加えて「呼び出し側に届く」チャネルが依然 1 本なので、`await server.shutdown()` を `catch` した呼び出し側から見た失敗は相変わらず 1 件のままになる。
-- **`TimeoutOutcome<T>` を `{ status: "failed"; error }` の 3 分岐にする** — 型としては最も素直だが、`withTimeout` に「タイムアウト」と「対象の失敗」という 2 つの関心を持たせることになる（ADR-001）。呼び出し側で `try`/`catch` するだけで同じ分離が得られるので、公開する型を増やす必要がない。
-- **`Result<T, E>`（`src/core/result.ts`）を使う** — 使わない。`Result` は「関数の返り値として成否を表す」語彙であり、ここで表現したいのは「後で throw するために保留した例外」でレイヤが違う。リポジトリ内の `Result` の `E` は実際すべて `TypedError` 派生であり、`unknown` を載せるのは慣習外である。
-- **`AggregateError`** — ECMAScript 標準（`lib: ES2024`）で追加の型定義が要らず、「複数の独立した失敗をまとめて 1 つ throw する」という意味そのものである。1 件のときは包まないので既存挙動も壊さない。**到達可能性が実質ゼロの経路に新しい語彙を持ち込まない**という点で、CLAUDE.md の型安全性原則（表現できることを増やすのではなく、誤りを表現できなくする）とも矛盾しない。
 
 **Issue 修正案 3 の後半（close 完了までの間に張られた接続の破棄）は、この順序変更によって解消される。** リスナーを先に閉じる以上、「close 完了までの間に新たに accept される接続」がそもそも存在しなくなるためである。つまり修正案 3 の後半は却下したのではなく**別の手段で満たされている**。**不採用とするのは `closeIdleConnections()` の併用のみ**である。
 
@@ -219,13 +175,23 @@ function httpServerPreClose(server) { server.closeIdleConnections(); clearInterv
 
 - 良い点: 「破棄 → 再接続 → accept」の経路が構造的に消える。順序に理由があることがコードとコメントに残る。Issue 修正案 3 の後半の懸念も同時に解消される。
 - 良い点: 呼び出し側から見た契約が明確になる — `shutdown()` から戻った時点（最初の `await` の前）でリスナーは既に閉じている。これはテストで決定的に検証できる（80 回試行して 100% 再現を確認済み）。`close()` を手順 1 に移したことで、この契約は**他の手順の成否から独立**した。
-- 良い点: どの手順が失敗しても残りの手順は実行され、有界待機にも必ず到達する。「たまたま throw しないから速い」という依存が手順 2〜4 から消えた。
-- 良い点: 「手順は同期である」という不変条件が `step()` の型で表明され、コンパイラが強制する。ADR-009 と同じ基準がシャットダウン経路全体で一貫した。
-- 良い点: 失敗が握り潰される経路が無い。手順 2〜4 の失敗と `closing` の予算内 reject が同時に起きても、両方が `AggregateError.errors` に載って CLI の `logger.error` に届く。
 - 良い点: リスニングハンドルは手順 1 で閉じるため、タイムアウトで打ち切っても**ポートは解放済み**である（`server.close()` 呼び出し後、コールバック未発火の状態で同じポートに再 bind できることを実測で確認）。
-- トレードオフ: `step()` の型注釈が条件型になり、素朴な `() => void` より読みにくい。なぜこの型が必要か（`void` は任意の戻り値を許す / `<T extends void>` では効かない）をコメント 4 行で補っている。
 - トレードオフ: シャットダウン中の進行中リクエスト（`/api/content` 等）が中断される。従来もほぼ同時だったため実質差は無く、意図した挙動。
-- トレードオフ: 失敗が 2 件以上のとき、呼び出し側が受け取るのは元のエラーではなく `AggregateError` になる。`src/index.ts` は `logger.error` に渡すだけなので実害は無く、そもそもこの経路は現状のコードでは到達しない。
+
+**エラー分離の撤回（ユーザーレビューによる判断）。** レビューの 2〜3 ラウンド目で、手順 2〜4 を `step()` ヘルパ（`<T>(run: () => T extends PromiseLike<unknown> ? never : T)` という条件型つき）で個別に捕捉し、手順 5 の予算内 reject も含めて `failures` 配列に集め、1 件はそのまま throw / 2 件以上は `AggregateError` にする、という機構を積み上げていた。これを撤回する。
+
+- **AC-1（Ctrl+C でプロセスが必ず終了する）に一切寄与していない。** 手順が throw して `shutdown()` が reject しても、`src/index.ts` の `try { await server.shutdown() } catch { logger.error(...) }` が捕捉し、そのまま `outro()` → `process.exit(0)` に到達する。**エラー分離が無くてもプロセスは終了する。**
+- 買えるのは「起こり得ないシナリオでの後始末の完全性」だけである。撤去後は手順 2〜4 のいずれかが throw すると**残りの手順も手順 5 の有界待機もまとめてスキップされ**、`runShutdown()` がその場で reject する。フォールト注入で実測した（隔離 worktree、実施後に撤去。SSE 接続 1 本を張った実 CLI に SIGINT を 1 回送る。手順 2 = `sse.shutdown()` を `throw` に差し替え）:
+
+| 実行 | exit code | SIGINT → プロセス終了 | タイムアウト警告 |
+|---|---|---|---|
+| 注入なし（正常系） | 0 | 6ms | なし |
+| 手順 2 が throw | **0** | **9ms** | なし（手順 5 に到達しないため） |
+
+  つまり「タイムアウト予算をフル消費する」のではなく、シャットダウンが早期に打ち切られて CLI の `catch` に落ちる。`[peek] Failed to shut down server: Error: ...` が出たうえで `outro()` → `process.exit(0)` に到達し、**exit code 0 で終了する**。残るのは「SSE ストリームとソケットを畳まないまま `process.exit(0)` する」という後始末の不完全さだけで、プロセスが終わる以上ユーザーから見た違いは無い。
+- そもそも `AggregateError` の到達可能性はレビュアー自身が「実質ゼロ（今日 throw しうる箇所が無い）」と評価していた。**レビューループのラチェットで到達不能な経路への防御が積み上がった**というのが撤回の理由である。
+- 撤回により、`shutdown()` の失敗チャネルは「最初に throw した手順のエラーがそのまま伝播する」という素直な形に戻る。`server.close()` のエラーが CLI の `logger.error` に届く既存挙動は変わらない。
+- 順序の回帰テスト（`shutdown step order`）は残す。撤去したのは `describe("shutdown error isolation")` の 3 ケースと、それが必要としていた `withStubbedServer` のエラー注入口だけである。
 
 ---
 
@@ -656,7 +622,6 @@ shutdown() {
 ### Consequences
 
 - 良い点: 再入ガードの正しさが「手順が同期であること」から独立した。将来手順に `await` やコールバックが入っても冪等性が壊れない。
-- 良い点: ここで採った基準（「コメントだけの不変条件は採らない」= 選択肢 a の却下）が、同じ関数内の `step()` にも適用された（ADR-002 改訂）。手順が非同期化されること自体を型が拒むため、この ADR の前提（手順 1〜4 が最初の `await` より前に完了する）も型で守られる。
 - 良い点: 手順本体が `runShutdown()` という名前付きの関数に出たことで、`shutdown()` 側は「memo とガード」だけを読めばよくなった。
 - トレードオフ: deferred を経由するぶん promise が 1 本増える。シャットダウンは 1 プロセスにつき 1 回なのでコストは無視できる。
 - トレードオフ: 「なぜ `shutdownPromise = runShutdown()` と書かないのか」が自明でないため、コメントで理由を残す必要がある（残した）。

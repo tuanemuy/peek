@@ -13,7 +13,7 @@ import {
   vi,
 } from "vitest";
 import type { FileWatcherHandle } from "../lib/watcher.js";
-import type { ServerInstance, StartServerOptions } from "./index.js";
+import type { ServerInstance } from "./index.js";
 import { startServer } from "./index.js";
 import type { SseManager } from "./routes/sse.js";
 
@@ -157,31 +157,15 @@ describe("startServer / shutdown lifecycle", () => {
   });
 });
 
-type ShutdownStubs = {
-  /**
-   * Replaces the default "invoke the callback right away" behaviour of
-   * `server.close()`. Not invoking the callback leaves `closing` pending
-   * forever, so only the bounded wait of step 5 can end the shutdown.
-   */
-  readonly onClose?: (cb?: (err?: Error) => void) => void;
-  readonly onCloseAllConnections?: () => void;
-  readonly onSseShutdown?: () => void;
-  readonly onWatcherClose?: () => void;
-};
-
 /**
  * Boots `startServer()` against a stubbed `serve()`, `SseManager.shutdown()`
- * and `FileWatcherHandle.close()`, recording steps 1-4 in `calls` as they run
- * and letting a test make any of them throw.
+ * and `FileWatcherHandle.close()`, recording steps 1-4 in `calls` as they run.
  *
  * Steps 1-4 are all synchronous and step 4 destroys the very sockets an
- * observer would be watching, so neither their order nor their individual
- * failure handling is visible through a real socket. Stubbing is what makes
- * them observable and injectable at all.
+ * observer would be watching, so their order is not visible through a real
+ * socket. Stubbing is what makes them observable at all.
  */
 async function withStubbedServer(
-  stubs: ShutdownStubs,
-  options: StartServerOptions | undefined,
   run: (instance: ServerInstance, calls: string[]) => Promise<void>,
 ): Promise<void> {
   const calls: string[] = [];
@@ -194,15 +178,10 @@ async function withStubbedServer(
       return Object.assign(server, {
         close(cb?: (err?: Error) => void) {
           calls.push("close");
-          if (stubs.onClose) {
-            stubs.onClose(cb);
-            return;
-          }
           cb?.();
         },
         closeAllConnections() {
           calls.push("closeAllConnections");
-          stubs.onCloseAllConnections?.();
         },
       });
     },
@@ -218,10 +197,6 @@ async function withStubbedServer(
           broadcast: manager.broadcast,
           shutdown: () => {
             calls.push("sse.shutdown");
-            if (stubs.onSseShutdown) {
-              stubs.onSseShutdown();
-              return;
-            }
             manager.shutdown();
           },
           get clientCount() {
@@ -242,10 +217,6 @@ async function withStubbedServer(
           ...watcher,
           close: () => {
             calls.push("watcher.close");
-            if (stubs.onWatcherClose) {
-              stubs.onWatcherClose();
-              return;
-            }
             watcher.close();
           },
         };
@@ -255,7 +226,7 @@ async function withStubbedServer(
 
   try {
     const { startServer } = await import("./index.js");
-    const instance = await startServer({ ...baseConfig, port: 0 }, options);
+    const instance = await startServer({ ...baseConfig, port: 0 });
     await run(instance, calls);
   } finally {
     vi.doUnmock("@hono/node-server");
@@ -263,19 +234,6 @@ async function withStubbedServer(
     vi.doUnmock("../lib/watcher.js");
     vi.resetModules();
   }
-}
-
-function rejectionOf(promise: Promise<unknown>): Promise<unknown> {
-  return promise.then(
-    () => {
-      throw new Error("expected shutdown() to reject, but it resolved");
-    },
-    (error: unknown) => error,
-  );
-}
-
-function messagesOf(error: unknown): string[] {
-  return (error as AggregateError).errors.map((e) => (e as Error).message);
 }
 
 /**
@@ -286,7 +244,7 @@ function messagesOf(error: unknown): string[] {
  */
 describe("shutdown step order", () => {
   it("closes the listener before destroying live connections, both before yielding", async () => {
-    await withStubbedServer({}, undefined, async (instance, calls) => {
+    await withStubbedServer(async (instance, calls) => {
       const shutting = instance.shutdown();
       shutting.catch(() => {});
       // Read before awaiting: anything recorded here happened before the first
@@ -299,107 +257,5 @@ describe("shutdown step order", () => {
       ]);
       await shutting;
     });
-  });
-});
-
-/**
- * Regression guard for the per-step error isolation of ADR-002. Each step is
- * caught on its own and the failures are reported together at the end, so that
- * a step throwing can neither cancel the steps after it nor — the point of this
- * whole change — skip the bounded wait that guarantees termination.
- *
- * Dropping the isolation (letting a step propagate straight out of
- * `runShutdown()`) makes the first case below reject in ~1ms with
- * `closeAllConnections` never recorded and no warning, instead of rejecting
- * only once the budget has elapsed.
- */
-describe("shutdown error isolation", () => {
-  it("runs the later steps and the bounded wait even when an earlier step throws", async () => {
-    await withStubbedServer(
-      {
-        onSseShutdown: () => {
-          throw new Error("sse boom");
-        },
-        // Never settles `closing`: reaching step 5 is the only way out.
-        onClose: () => {},
-      },
-      { shutdownTimeoutMs: 30 },
-      async (instance, calls) => {
-        const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
-        try {
-          const startedAt = Date.now();
-          const error = await rejectionOf(instance.shutdown());
-          const elapsedMs = Date.now() - startedAt;
-
-          // The steps after the failing one ran...
-          expect(calls).toEqual([
-            "close",
-            "sse.shutdown",
-            "watcher.close",
-            "closeAllConnections",
-          ]);
-          // ...the bounded wait ran and expired (a shutdown that skipped it
-          // would come back in ~1ms and never warn)...
-          expect(elapsedMs).toBeGreaterThanOrEqual(25);
-          expect(warn).toHaveBeenCalledTimes(1);
-          expect(warn.mock.calls[0]?.join(" ")).toContain(
-            "did not close within",
-          );
-          // ...and the lone failure is reported unwrapped.
-          expect(error).toBeInstanceOf(Error);
-          expect(error).not.toBeInstanceOf(AggregateError);
-          expect((error as Error).message).toBe("sse boom");
-        } finally {
-          warn.mockRestore();
-        }
-      },
-    );
-  });
-
-  it("aggregates two failing steps instead of losing one to the other", async () => {
-    await withStubbedServer(
-      {
-        // Step 3 is the one most likely to throw for real (it closes the
-        // `fs.FSWatcher` handles), so inject there rather than into step 2.
-        onWatcherClose: () => {
-          throw new Error("watcher boom");
-        },
-        onCloseAllConnections: () => {
-          throw new Error("socket boom");
-        },
-      },
-      { shutdownTimeoutMs: 1_000 },
-      async (instance, calls) => {
-        const error = await rejectionOf(instance.shutdown());
-
-        expect(calls).toEqual([
-          "close",
-          "sse.shutdown",
-          "watcher.close",
-          "closeAllConnections",
-        ]);
-        expect(error).toBeInstanceOf(AggregateError);
-        expect(messagesOf(error)).toEqual(["watcher boom", "socket boom"]);
-      },
-    );
-  });
-
-  it("collects a rejection from the bounded wait alongside an earlier failure", async () => {
-    await withStubbedServer(
-      {
-        // Rejects `closing` inside the budget, so step 5 itself throws.
-        onClose: (cb) => cb?.(new Error("close boom")),
-        onCloseAllConnections: () => {
-          throw new Error("socket boom");
-        },
-      },
-      { shutdownTimeoutMs: 1_000 },
-      async (instance) => {
-        const error = await rejectionOf(instance.shutdown());
-
-        expect(error).toBeInstanceOf(AggregateError);
-        expect(messagesOf(error)).toEqual(["socket boom", "close boom"]);
-      },
-    );
   });
 });

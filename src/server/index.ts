@@ -211,61 +211,33 @@ export async function startServer(
     });
     return closePromise;
   };
-  // The order of the steps below matters, and each one runs even if an earlier
-  // one throws: skipping a step costs either termination speed or the bounded
-  // wait itself. Failures are collected so none of them is lost to another.
+  // The order of the steps below matters.
   const runShutdown = async (): Promise<void> => {
-    const failures: unknown[] = [];
-    // A step must be synchronous: an async one would neither land its failure
-    // in `failures` nor finish before step 5. The conditional type is what
-    // rejects it — `() => void` accepts any return value, and `<T extends void>`
-    // infers `T = void` and passes too.
-    const step = <T>(run: () => T extends PromiseLike<unknown> ? never : T) => {
-      try {
-        run();
-      } catch (error) {
-        failures.push(error);
-      }
-    };
-
     // 1. Stop the listener first: every step below can make a browser
     //    reconnect (both an aborted SSE stream and a destroyed socket fire
     //    `onerror`), and once the listener is gone those attempts fail at the
     //    TCP level.
     const closing = close();
     // 2. Refuse new /sse requests and abort the streams already running.
-    step(() => sse.shutdown());
+    sse.shutdown();
     // 3. No further file events, hence no further broadcasts.
-    step(() => watcher.close());
+    watcher.close();
     // 4. Destroy the sockets that are still active — skip this and step 5
     //    burns its whole budget. The idle keep-alive ones need no help (Node
     //    >= 19 calls `closeIdleConnections()` from within `close()`), but
     //    `close()` would wait forever on the in-flight SSE responses.
     //    Only `http.Server` has this method, and `serve()` returns a union
     //    with Http2; peek always creates a plain HTTP server.
-    step(() => {
-      if ("closeAllConnections" in server) {
-        server.closeAllConnections();
-      }
-    });
+    if ("closeAllConnections" in server) {
+      server.closeAllConnections();
+    }
     // 5. Wait, but never indefinitely — the root cause of the reported hang is
     //    unknown, so a bounded wait is what guarantees termination.
-    try {
-      const outcome = await withTimeout(closing, shutdownTimeoutMs);
-      if (outcome.status === "timed-out") {
-        logger.warn(
-          `HTTP server did not close within ${shutdownTimeoutMs}ms — giving up and leaving the remaining sockets to the caller.`,
-        );
-      }
-    } catch (error) {
-      failures.push(error);
-    }
-
-    if (failures.length === 1) {
-      throw failures[0];
-    }
-    if (failures.length > 1) {
-      throw new AggregateError(failures, "Failed to shut down the server.");
+    const outcome = await withTimeout(closing, shutdownTimeoutMs);
+    if (outcome.status === "timed-out") {
+      logger.warn(
+        `HTTP server did not close within ${shutdownTimeoutMs}ms — giving up and leaving the remaining sockets to the caller.`,
+      );
     }
   };
 
