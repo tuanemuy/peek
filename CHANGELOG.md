@@ -1,3 +1,14 @@
+## [1.9.1](https://github.com/tuanemuy/peek/compare/v1.9.0...v1.9.1) (2026-08-11)
+
+
+### Bug Fixes
+
+* Ctrl+C でのシャットダウンを有界化しSSEのレースを構造的に塞ぐ ([3693d5d](https://github.com/tuanemuy/peek/commit/3693d5d485831946da160ba191c7bbf2cf17ca0c)), closes [#102](https://github.com/tuanemuy/peek/issues/102)
+* **deps:** update dependency gunshi to ^0.37.0 ([be6480e](https://github.com/tuanemuy/peek/commit/be6480e965b1298fff119aa7d2d270bb419de69c))
+* step() の同期性を型で表明し、手順3の回帰ガードを追加 ([3aff692](https://github.com/tuanemuy/peek/commit/3aff6922fc08e6cc436e48e96d8b0c839ae010b2)), closes [#102](https://github.com/tuanemuy/peek/issues/102)
+* シャットダウンのエラー分離を手順ごとに分け、SSE の登録窓を塞ぐ ([5a44ecd](https://github.com/tuanemuy/peek/commit/5a44ecd650ef77c3ba7c7586d345c272f13174a2)), closes [#102](https://github.com/tuanemuy/peek/issues/102)
+* レビュー指摘を反映しシャットダウン手順とテストの判別性を強化 ([b8e5da3](https://github.com/tuanemuy/peek/commit/b8e5da32942f91031650fa0fa67aa5efbb0c6b5f)), closes [#102](https://github.com/tuanemuy/peek/issues/102)
+
 # [1.9.0](https://github.com/tuanemuy/peek/compare/v1.8.0...v1.9.0) (2026-06-07)
 
 
