@@ -169,19 +169,24 @@ $ peek README.md --css ./custom.css --no-open`,
     outro(pc.dim("Press Ctrl+C to stop"));
 
     let shuttingDown = false;
-    const shutdown = async () => {
+    const shutdown = async (signal: NodeJS.Signals) => {
       if (shuttingDown) {
         console.error("\nForce exiting...");
         process.exit(1);
       }
       shuttingDown = true;
       console.log();
+      // Logged after the blank line so it does not end up on the same line as
+      // the terminal's `^C` echo. Tells us, if a hang is ever reported again,
+      // whether the signal handler ran at all and which signal started it.
+      logger.info(`Received ${signal}, shutting down...`);
       intro(pc.bgYellow(pc.black(" Shutting down... ")));
       try {
         await server.shutdown();
       } catch (e: unknown) {
         logger.error("Failed to shut down server:", e);
       }
+      // "Server stopped" is asserted by src/index.shutdown-process.test.ts.
       outro(pc.green("Server stopped. Bye!"));
       process.exit(0);
     };
