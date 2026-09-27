@@ -34,7 +34,6 @@ function renderRawHtmlIframe(rawUrl: string, title: string): string {
 
 type ResolvedPath = {
   readonly relativePath: string;
-  readonly fullPath: string;
   readonly contentType: ContentType;
 };
 
@@ -47,15 +46,14 @@ function resolveAndValidatePath(
   if (!query) {
     return { ok: false, status: 400, message: "Missing path parameter" };
   }
-  const fullPath = resolveWithinBase(basePath, query);
-  if (fullPath === null) {
+  if (resolveWithinBase(basePath, query) === null) {
     return { ok: false, status: 403, message: "Forbidden" };
   }
   const contentType = getContentType(query);
   if (!contentType) {
     return { ok: false, status: 415, message: "Unsupported file type" };
   }
-  return { ok: true, value: { relativePath: query, fullPath, contentType } };
+  return { ok: true, value: { relativePath: query, contentType } };
 }
 
 export function createApiRoutes(config: ApiConfig): Hono {
@@ -93,7 +91,7 @@ export function createApiRoutes(config: ApiConfig): Hono {
     if (!resolved.ok) {
       return c.text(resolved.message, resolved.status);
     }
-    const { relativePath, fullPath, contentType } = resolved.value;
+    const { relativePath, contentType } = resolved.value;
 
     if (contentType === "html") {
       return c.html(
@@ -101,7 +99,7 @@ export function createApiRoutes(config: ApiConfig): Hono {
       );
     }
 
-    const realPath = await realPathWithinBase(config.targetPath, fullPath);
+    const realPath = await realPathWithinBase(config.targetPath, relativePath);
     if (!realPath.ok) {
       const { status, message } = realPathErrorResponse(realPath.error);
       return c.text(message, status);

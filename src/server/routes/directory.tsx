@@ -91,11 +91,10 @@ function renderDirectoryView(params: {
 
 async function renderFileContent(
   dirPath: string,
-  fullPath: string,
   relativePath: string,
   contentType: ContentType,
 ): Promise<{ ok: true; html: string } | ({ ok: false } & ErrorResponse)> {
-  const realPath = await realPathWithinBase(dirPath, fullPath);
+  const realPath = await realPathWithinBase(dirPath, relativePath);
   if (!realPath.ok) {
     return { ok: false, ...realPathErrorResponse(realPath.error) };
   }
@@ -150,13 +149,8 @@ export function createDirectoryRoutes(
       logger.error("Unexpected unsupported file in tree:", firstFile.path);
       return c.text("Internal server error", 500);
     }
-    const fullPath = resolveWithinBase(dirPath, firstFile.path);
-    if (fullPath === null) {
-      return c.text("Forbidden", 403);
-    }
     const rendered = await renderFileContent(
       dirPath,
-      fullPath,
       firstFile.path,
       contentType,
     );
@@ -185,8 +179,7 @@ export function createDirectoryRoutes(
       return c.redirect("/");
     }
 
-    const fullPath = resolveWithinBase(dirPath, relativePath);
-    if (fullPath === null) {
+    if (resolveWithinBase(dirPath, relativePath) === null) {
       return c.text("Forbidden", 403);
     }
 
@@ -197,7 +190,6 @@ export function createDirectoryRoutes(
 
     const rendered = await renderFileContent(
       dirPath,
-      fullPath,
       relativePath,
       contentType,
     );
@@ -228,8 +220,7 @@ export function createDirectoryRoutes(
 
   app.get("/:path{.+}", async (c) => {
     const relativePath = c.req.param("path");
-    const fullPath = resolveWithinBase(dirPath, relativePath);
-    if (fullPath === null) {
+    if (resolveWithinBase(dirPath, relativePath) === null) {
       return c.text("Forbidden", 403);
     }
 
@@ -240,7 +231,6 @@ export function createDirectoryRoutes(
 
     const rendered = await renderFileContent(
       dirPath,
-      fullPath,
       relativePath,
       contentType,
     );

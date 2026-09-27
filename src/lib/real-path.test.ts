@@ -23,48 +23,40 @@ afterAll(() => {
 
 describe("realPathWithinBase", () => {
   it("returns the real path of a regular file", async () => {
-    const result = await realPathWithinBase(
-      baseDir,
-      join(baseDir, "sub", "a.md"),
-    );
+    const result = await realPathWithinBase(baseDir, "sub/a.md");
     expect(result).toEqual({ ok: true, value: join(baseDir, "sub", "a.md") });
   });
 
   it("follows a symlink that stays inside the base", async () => {
-    const result = await realPathWithinBase(
-      baseDir,
-      join(baseDir, "inside-link.md"),
-    );
+    const result = await realPathWithinBase(baseDir, "inside-link.md");
     expect(result).toEqual({ ok: true, value: join(baseDir, "sub", "a.md") });
   });
 
   it("refuses a symlink that leads outside the base", async () => {
-    const result = await realPathWithinBase(
-      baseDir,
-      join(baseDir, "outside-link.md"),
-    );
+    const result = await realPathWithinBase(baseDir, "outside-link.md");
+    expect(result).toEqual({ ok: false, error: { type: "outside-base" } });
+  });
+
+  it("refuses an existing file reached through ..", async () => {
+    const result = await realPathWithinBase(baseDir, "../outside/b.md");
     expect(result).toEqual({ ok: false, error: { type: "outside-base" } });
   });
 
   it("accepts files when the base itself is a symlink", async () => {
-    const linkedBase = join(fixtureDir, "base-link");
     const result = await realPathWithinBase(
-      linkedBase,
-      join(linkedBase, "sub", "a.md"),
+      join(fixtureDir, "base-link"),
+      "sub/a.md",
     );
     expect(result).toEqual({ ok: true, value: join(baseDir, "sub", "a.md") });
   });
 
   it("reports a missing file as not found", async () => {
-    const result = await realPathWithinBase(baseDir, join(baseDir, "nope.md"));
+    const result = await realPathWithinBase(baseDir, "nope.md");
     expect(result).toEqual({ ok: false, error: { type: "not-found" } });
   });
 
   it("reports a path under a file as not found", async () => {
-    const result = await realPathWithinBase(
-      baseDir,
-      join(baseDir, "sub", "a.md", "child.md"),
-    );
+    const result = await realPathWithinBase(baseDir, "sub/a.md/child.md");
     expect(result).toEqual({ ok: false, error: { type: "not-found" } });
   });
 });

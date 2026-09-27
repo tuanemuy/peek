@@ -1,4 +1,5 @@
 import { realpath } from "node:fs/promises";
+import { resolve } from "node:path";
 import { isWithinBase } from "../core/path.js";
 import { err, ok, type Result } from "../core/result.js";
 import { isNotFoundError } from "./node-error.js";
@@ -9,17 +10,18 @@ export type RealPathWithinBaseError =
   | { readonly type: "io-error"; readonly cause: unknown };
 
 /**
- * Resolves symlinks in `fullPath` and checks that the real path is still
- * inside the real `base`, so that a symlink cannot lead outside of it.
+ * Resolves `relativePath` against `base`, following symlinks, and checks that
+ * the real path is still inside the real `base`, so that neither `..` nor a
+ * symlink can lead outside of it.
  */
 export async function realPathWithinBase(
   base: string,
-  fullPath: string,
+  relativePath: string,
 ): Promise<Result<string, RealPathWithinBaseError>> {
   try {
     const [realBase, realTarget] = await Promise.all([
       realpath(base),
-      realpath(fullPath),
+      realpath(resolve(base, relativePath)),
     ]);
     return isWithinBase(realBase, realTarget)
       ? ok(realTarget)
