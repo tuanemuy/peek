@@ -174,35 +174,51 @@ async function observe(browser, viewport) {
     },
   );
 
-  // AC8: an old tree link with \ is redirected with 302 to the / URL, which
-  // shows the file revealed.
-  await step(
-    `${v} AC8 old bookmark a\\b\\c.md`,
-    {
-      redirect: { from: "/view?path=a%5Cb%5Cc.md", status: 302 },
-      path: "a/b/c.md",
-      sidebar: REVEALED_C,
-    },
-    async () => {
-      const response = await page.goto(`${BASE}/view?path=a%5Cb%5Cc.md`);
-      const redirected = response?.request().redirectedFrom();
-      const redirectResponse = await redirected?.response();
-      await showSidebar(page, viewport);
-      await shot("ac8-old-bookmark");
-      return {
-        redirect: redirected
-          ? {
-              from:
-                new URL(redirected.url()).pathname +
-                new URL(redirected.url()).search,
-              status: redirectResponse?.status(),
-            }
-          : null,
-        path: pathQuery(page),
-        sidebar: await sidebarState(page),
-      };
-    },
-  );
+  // AC8: on Windows an old tree link with \ is redirected with 302 to the /
+  // URL, which shows the file revealed. On POSIX `a\b\c.md` is a file name, is
+  // not redirected, and does not exist in the fixture.
+  if (process.platform !== "win32") {
+    await step(
+      `${v} AC8 a\\b\\c.md on POSIX`,
+      { redirect: null, status: 404, path: "a\\b\\c.md" },
+      async () => {
+        const response = await page.goto(`${BASE}/view?path=a%5Cb%5Cc.md`);
+        return {
+          redirect: response?.request().redirectedFrom() ?? null,
+          status: response?.status(),
+          path: pathQuery(page),
+        };
+      },
+    );
+  } else {
+    await step(
+      `${v} AC8 old bookmark a\\b\\c.md`,
+      {
+        redirect: { from: "/view?path=a%5Cb%5Cc.md", status: 302 },
+        path: "a/b/c.md",
+        sidebar: REVEALED_C,
+      },
+      async () => {
+        const response = await page.goto(`${BASE}/view?path=a%5Cb%5Cc.md`);
+        const redirected = response?.request().redirectedFrom();
+        const redirectResponse = await redirected?.response();
+        await showSidebar(page, viewport);
+        await shot("ac8-old-bookmark");
+        return {
+          redirect: redirected
+            ? {
+                from:
+                  new URL(redirected.url()).pathname +
+                  new URL(redirected.url()).search,
+                status: redirectResponse?.status(),
+              }
+            : null,
+          path: pathQuery(page),
+          sidebar: await sidebarState(page),
+        };
+      },
+    );
+  }
 
   // AC12: / shows the first file with it revealed.
   await step(
