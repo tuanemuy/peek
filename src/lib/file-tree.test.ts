@@ -101,6 +101,34 @@ describe("buildFileTree", () => {
   });
 });
 
+describe.skipIf(process.platform === "win32")(
+  "buildFileTree with a backslash in a file name",
+  () => {
+    const dir = join(import.meta.dirname, "__test_fixture_backslash__");
+
+    beforeAll(() => {
+      mkdirSync(join(dir, "docs"), { recursive: true });
+      writeFileSync(join(dir, "docs", "a\\b.md"), "# Backslash");
+    });
+
+    afterAll(() => {
+      rmSync(dir, { recursive: true, force: true });
+    });
+
+    it("keeps the backslash in the node path", async () => {
+      const tree = assertOk(await buildFileTree(dir));
+      expect(tree).toEqual([
+        {
+          name: "docs",
+          path: "docs",
+          type: "directory",
+          children: [{ name: "a\\b.md", path: "docs/a\\b.md", type: "file" }],
+        },
+      ]);
+    });
+  },
+);
+
 describe("buildFileTree error handling", () => {
   it("returns root-not-accessible when the root directory does not exist", async () => {
     const result = await buildFileTree("/nonexistent/path");

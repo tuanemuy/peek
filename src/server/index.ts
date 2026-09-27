@@ -2,6 +2,7 @@ import { realpath } from "node:fs/promises";
 import { dirname } from "node:path";
 import { serve } from "@hono/node-server";
 import { Hono } from "hono";
+import { toSlashPath } from "../core/path.js";
 import type { FileTreeCache } from "../lib/file-tree-cache.js";
 import { createFileTreeCache } from "../lib/file-tree-cache.js";
 import { logger } from "../lib/logger.js";
@@ -151,9 +152,11 @@ function setupWatcher(ctx: AppContext, sse: SseManager): FileWatcherHandle {
     });
   } else {
     watcher.watchDirectory(ctx.targetPath, (filePath) => {
-      const normalizedPath = filePath.replace(/\\/g, "/");
       ctx.treeCache.invalidate();
-      sse.broadcast("file-changed", JSON.stringify({ path: normalizedPath }));
+      sse.broadcast(
+        "file-changed",
+        JSON.stringify({ path: toSlashPath(filePath) }),
+      );
       sse.broadcast("tree-changed", JSON.stringify({}));
     });
   }

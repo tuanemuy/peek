@@ -164,28 +164,8 @@ describe("findAncestorPaths", () => {
     expect(findAncestorPaths(makeTree(), "docs-old/a.md")).toEqual([]);
   });
 
-  it("follows Windows-style paths as they appear in the tree", () => {
-    const tree = [
-      dir("docs", "docs", [
-        dir("api", "docs\\api", [file("ref.md", "docs\\api\\ref.md")]),
-      ]),
-    ];
-    expect(findAncestorPaths(tree, "docs\\api\\ref.md")).toEqual([
-      "docs",
-      "docs\\api",
-    ]);
-  });
-
-  it("accepts / in a path for a Windows-style tree", () => {
-    const tree = [
-      dir("docs", "docs", [
-        dir("api", "docs\\api", [file("ref.md", "docs\\api\\ref.md")]),
-      ]),
-    ];
-    expect(findAncestorPaths(tree, "docs/api/ref.md")).toEqual([
-      "docs",
-      "docs\\api",
-    ]);
+  it("does not treat a file as an ancestor", () => {
+    expect(findAncestorPaths(makeTree(), "README.md/child.md")).toEqual([]);
   });
 
   it("treats a backslash in a POSIX file name as part of the name", () => {

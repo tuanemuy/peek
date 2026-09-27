@@ -12,7 +12,7 @@ import {
   initialOpenState,
   isDirectoryOpen,
 } from "../../core/file-tree-open-state.js";
-import { isRelativePathWithinBase } from "../../core/path.js";
+import { isRelativePathWithinBase, toSlashPath } from "../../core/path.js";
 import { encodeUrlPath, rawFileUrl } from "../../core/url.js";
 import type { FileTreeCache } from "../../lib/file-tree-cache.js";
 import { logger } from "../../lib/logger.js";
@@ -187,6 +187,11 @@ export function createDirectoryRoutes(
     const relativePath = c.req.query("path");
     if (!relativePath) {
       return c.redirect("/");
+    }
+
+    const slashPath = toSlashPath(relativePath);
+    if (slashPath !== relativePath) {
+      return c.redirect(`/view?path=${encodeURIComponent(slashPath)}`);
     }
 
     if (!isRelativePathWithinBase(dirPath, relativePath)) {

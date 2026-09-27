@@ -86,7 +86,19 @@ describe("createSseConnection", () => {
     expect(instance.url).toBe("/sse");
   });
 
-  it("calls onFileChanged with normalized path on file-changed event", () => {
+  it("calls onFileChanged with the notified path on file-changed event", () => {
+    const onFileChanged = vi.fn();
+    createSseConnection({ onFileChanged });
+
+    getInstance().dispatchEvent(
+      "file-changed",
+      JSON.stringify({ path: "docs/readme.md" }),
+    );
+
+    expect(onFileChanged).toHaveBeenCalledWith("docs/readme.md");
+  });
+
+  it("keeps a backslash in the notified path as part of the file name", () => {
     const onFileChanged = vi.fn();
     createSseConnection({ onFileChanged });
 
@@ -95,7 +107,7 @@ describe("createSseConnection", () => {
       JSON.stringify({ path: "docs\\readme.md" }),
     );
 
-    expect(onFileChanged).toHaveBeenCalledWith("docs/readme.md");
+    expect(onFileChanged).toHaveBeenCalledWith("docs\\readme.md");
   });
 
   it("calls onFileChanged with null when data is invalid JSON", () => {

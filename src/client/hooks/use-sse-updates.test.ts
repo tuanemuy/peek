@@ -196,6 +196,23 @@ describe("useSseUpdates", () => {
       expect(onContentUpdate).not.toHaveBeenCalled();
       expect(fetchContent).not.toHaveBeenCalled();
     });
+
+    it("treats a backslash as part of a file name, not as a separator", () => {
+      const onContentUpdate = vi.fn();
+
+      useSseUpdates({
+        onContentUpdate,
+        getCurrentPath: () => "docs/readme.md",
+        getCurrentContentType: () => "markdown",
+        onTreeUpdate: vi.fn(),
+      });
+
+      const { onFileChanged } = getSseCallbacks();
+      onFileChanged("docs\\readme.md");
+
+      expect(onContentUpdate).not.toHaveBeenCalled();
+      expect(fetchContent).not.toHaveBeenCalled();
+    });
   });
 
   describe("file mode", () => {

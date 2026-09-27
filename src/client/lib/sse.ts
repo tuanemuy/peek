@@ -5,7 +5,6 @@ import {
   SSE_STABLE_THRESHOLD_MS,
 } from "../../core/sse-constants.js";
 import { logger } from "../../lib/logger.js";
-import { normalizePath } from "./path-utils.js";
 
 function parseFileChangedData(raw: string): { path: string } | null {
   let data: unknown;
@@ -42,7 +41,7 @@ export function createSseConnection(callbacks: SseCallbacks): () => void {
 
     evtSource.addEventListener("file-changed", (e: MessageEvent) => {
       const parsed = parseFileChangedData(e.data);
-      callbacks.onFileChanged(parsed ? normalizePath(parsed.path) : null);
+      callbacks.onFileChanged(parsed ? parsed.path : null);
     });
 
     if (callbacks.onTreeChanged) {

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { isRelativePathWithinBase, isWithinBase } from "./path.js";
+import { isRelativePathWithinBase, isWithinBase, toSlashPath } from "./path.js";
 
 describe("isWithinBase", () => {
   it("returns true for a child path", () => {
@@ -88,5 +88,15 @@ describe("isRelativePathWithinBase", () => {
     expect(isRelativePathWithinBase("/home/user/docs", "/etc/passwd")).toBe(
       false,
     );
+  });
+});
+
+describe("toSlashPath", () => {
+  it("keeps a /-separated path as is", () => {
+    expect(toSlashPath("docs/api/ref.md")).toBe("docs/api/ref.md");
+  });
+
+  it("keeps a backslash as part of a POSIX file name", () => {
+    expect(toSlashPath("docs/a\\b.md")).toBe("docs/a\\b.md");
   });
 });

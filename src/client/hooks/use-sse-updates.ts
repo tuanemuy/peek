@@ -2,7 +2,6 @@ import { useEffect } from "preact/hooks";
 import type { ContentType } from "../../core/content-type.js";
 import type { FileTreeNode } from "../../core/file-tree.js";
 import { fetchContent, fetchTree } from "../lib/api-client.js";
-import { normalizePath } from "../lib/path-utils.js";
 import { createSseConnection } from "../lib/sse.js";
 
 /**
@@ -40,7 +39,7 @@ export function useSseUpdates(params: {
           // Directory mode: only refresh if the changed file matches current
           if (changedPath === null) return;
           const current = getCurrentPath();
-          if (normalizePath(changedPath) !== normalizePath(current)) return;
+          if (changedPath !== current) return;
           // HTML files are served via iframe; just signal a reload
           if (getCurrentContentType?.() === "html") {
             onHtmlReload?.();

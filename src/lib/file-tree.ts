@@ -5,6 +5,7 @@ import ignore, { type Ignore } from "ignore";
 import { isSupportedFile } from "../core/content-type.js";
 import { type TypedError, typedError } from "../core/error.js";
 import type { FileTreeNode } from "../core/file-tree.js";
+import { toSlashPath } from "../core/path.js";
 import type { Result } from "../core/result.js";
 import { err, ok } from "../core/result.js";
 import { logger } from "./logger.js";
@@ -164,7 +165,7 @@ async function processEntries(
           children.length > 0
             ? {
                 name: entry.name,
-                path: relPath,
+                path: toSlashPath(relPath),
                 type: "directory" as const,
                 children,
               }
@@ -176,7 +177,7 @@ async function processEntries(
 
       fileNodes.push({
         name: entry.name,
-        path: relPath,
+        path: toSlashPath(relPath),
         type: "file",
       });
     }
