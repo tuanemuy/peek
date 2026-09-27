@@ -1,6 +1,11 @@
 import { describe, expectTypeOf, it } from "vitest";
 import { type FileTreeNode, findAncestorPaths } from "./file-tree.js";
-import { initialOpenState, revealFile } from "./file-tree-open-state.js";
+import {
+  initialOpenState,
+  isDirectoryOpen,
+  revealFile,
+  toggleDirectory,
+} from "./file-tree-open-state.js";
 import type { DirectoryInitialState } from "./initial-state.js";
 import { toSlashPath } from "./path.js";
 import type { SlashPath } from "./slash-path.js";
@@ -24,5 +29,7 @@ describe("SlashPath", () => {
     expectTypeOf(findAncestorPaths).parameter(1).toEqualTypeOf<SlashPath>();
     expectTypeOf(initialOpenState).parameter(1).toEqualTypeOf<SlashPath>();
     expectTypeOf(revealFile).parameter(2).toEqualTypeOf<SlashPath>();
+    expectTypeOf(toggleDirectory).parameter(2).toEqualTypeOf<SlashPath>();
+    expectTypeOf(isDirectoryOpen).parameter(1).toEqualTypeOf<SlashPath>();
   });
 });

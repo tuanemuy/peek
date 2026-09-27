@@ -84,7 +84,7 @@ export function useSidebar(): SidebarActions {
     const handle = document.getElementById("sidebar-resize");
     if (!handle) return;
 
-    function onPointerDown(e: PointerEvent): void {
+    const onPointerDown = (e: PointerEvent): void => {
       e.preventDefault();
       handle.setPointerCapture(e.pointerId);
       const sidebar = document.getElementById("sidebar");
@@ -99,7 +99,7 @@ export function useSidebar(): SidebarActions {
         );
       }
 
-      function onPointerEnd(ev: PointerEvent): void {
+      const onPointerEnd = (ev: PointerEvent): void => {
         handle.releasePointerCapture(ev.pointerId);
         handle.removeEventListener("pointermove", onPointerMove);
         handle.removeEventListener("pointerup", onPointerEnd);
@@ -111,12 +111,12 @@ export function useSidebar(): SidebarActions {
           const width = Math.min(Math.max(ev.clientX, MIN_WIDTH), MAX_WIDTH);
           localStorage.setItem(SIDEBAR_WIDTH_KEY, String(width));
         }
-      }
+      };
 
       handle.addEventListener("pointermove", onPointerMove);
       handle.addEventListener("pointerup", onPointerEnd);
       handle.addEventListener("pointercancel", onPointerEnd);
-    }
+    };
 
     handle.addEventListener("pointerdown", onPointerDown);
     return () => handle.removeEventListener("pointerdown", onPointerDown);

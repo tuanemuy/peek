@@ -264,6 +264,29 @@ async function observe(browser, viewport) {
     },
   );
 
+  // The sidebar resize handle (desktop only) still sets and saves the width.
+  if (v === "desktop") {
+    await step(
+      `${v} sidebar resize`,
+      { cssWidth: "400px", savedWidth: "400" },
+      async () => {
+        await page.goto(`${BASE}/view?path=root.md`);
+        const box = await page.locator("#sidebar-resize").boundingBox();
+        const y = box.y + box.height / 2;
+        await page.mouse.move(box.x + box.width / 2, y);
+        await page.mouse.down();
+        await page.mouse.move(300, y, { steps: 5 });
+        await page.mouse.move(400, y, { steps: 5 });
+        await page.mouse.up();
+        return page.evaluate(() => ({
+          cssWidth:
+            document.documentElement.style.getPropertyValue("--sidebar-width"),
+          savedWidth: localStorage.getItem("sidebar-width"),
+        }));
+      },
+    );
+  }
+
   await context.close();
 }
 

@@ -8,7 +8,7 @@ type FileTreeItemsProps = {
   readonly nodes: readonly FileTreeNode[];
   readonly currentPath?: SlashPath;
   readonly depth?: number;
-  readonly isOpen: (path: string) => boolean;
+  readonly isOpen: (path: SlashPath) => boolean;
   readonly onToggle?: (path: SlashPath) => void;
 };
 
@@ -22,7 +22,7 @@ function DirectoryItem({
   readonly node: FileTreeNode;
   readonly currentPath?: SlashPath;
   readonly depth: number;
-  readonly isOpen: (path: string) => boolean;
+  readonly isOpen: (path: SlashPath) => boolean;
   readonly onToggle?: (path: SlashPath) => void;
 }) {
   const open = isOpen(node.path);

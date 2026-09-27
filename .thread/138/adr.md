@@ -63,3 +63,18 @@ ADR-002 では `FileTreeNode.path` だけを `SlashPath` にした。表示中�
 
 - 表示中のファイルのパスを `toSlashPath` を通さずにサーバーから渡すと、型エラーになる
 - `pnpm typecheck` は `tsconfig.json` だけを見ていて、`src/client/` は対象外（`tsconfig.client.json`）。クライアントの型は `npx tsgo -p tsconfig.client.json` で確かめた。この設定には変更前から `use-sidebar.ts` のエラーがある
+
+## ADR-004: `pnpm typecheck` でクライアントの設定も型チェックする
+
+### Context
+
+ADR-003 でクライアントの入力を `SlashPath` にしたが、`pnpm typecheck` は `tsconfig.json` だけを見ていて `src/client/` を除外している。`tsconfig.client.json` には既存の `use-sidebar.ts` のエラーがあり、ゲートにも CI にも入っていない（#140）。このままではクライアント側で `SlashPath` を外しても検出されない。
+
+### Decision
+
+`pnpm typecheck` を `tsgo && tsgo -p tsconfig.client.json` にする。CI は `pnpm typecheck` を実行するので、CI でもクライアントの型エラーが失敗になる。`use-sidebar.ts` のエラーは、関数宣言の中で `handle` の null の絞り込みが効かないことが原因。関数宣言をアロー関数の `const` にして解消する。挙動は変えない。
+
+### Consequences
+
+- クライアント側で `SlashPath` を外すと `pnpm typecheck` が失敗する
+- #140 はこの変更で解消する

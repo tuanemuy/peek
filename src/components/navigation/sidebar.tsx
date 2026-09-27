@@ -7,7 +7,7 @@ type SidebarProps = {
   readonly tree: readonly FileTreeNode[];
   readonly currentPath: SlashPath;
   readonly onClose?: () => void;
-  readonly isOpen: (path: string) => boolean;
+  readonly isOpen: (path: SlashPath) => boolean;
   readonly onToggle?: (path: SlashPath) => void;
   readonly searchQuery?: string;
   readonly onSearchChange?: (query: string) => void;

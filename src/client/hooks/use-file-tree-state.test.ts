@@ -144,19 +144,19 @@ describe("useFileTreeState", () => {
     seedStore({ p: { expanded: ["z"], lastAccess: NOW } });
     const first = renderOnce("p", slash("a/b/c.md"));
 
-    expect(first.isOpen("a")).toBe(true);
-    expect(first.isOpen("a/b")).toBe(true);
-    expect(first.isOpen("z")).toBe(false);
+    expect(first.isOpen(slash("a"))).toBe(true);
+    expect(first.isOpen(slash("a/b"))).toBe(true);
+    expect(first.isOpen(slash("z"))).toBe(false);
   });
 
   it("restores the stored expanded directories after mount, keeping the ancestors open", () => {
     seedStore({ p: { expanded: ["z"], lastAccess: NOW - 1 } });
     const fileTree = render("p", slash("a/b/c.md"));
 
-    expect(fileTree.isOpen("z")).toBe(true);
-    expect(fileTree.isOpen("a")).toBe(true);
-    expect(fileTree.isOpen("a/b")).toBe(true);
-    expect(fileTree.isOpen("m")).toBe(false);
+    expect(fileTree.isOpen(slash("z"))).toBe(true);
+    expect(fileTree.isOpen(slash("a"))).toBe(true);
+    expect(fileTree.isOpen(slash("a/b"))).toBe(true);
+    expect(fileTree.isOpen(slash("m"))).toBe(false);
   });
 
   it("rewrites the store on mount with expired and legacy entries dropped and lastAccess refreshed", () => {
@@ -181,7 +181,9 @@ describe("useFileTreeState", () => {
     vi.setSystemTime(NOW + 5);
     fileTree.toggle(slash("a/sibling"));
 
-    expect(render("p", slash("a/b/c.md")).isOpen("a/sibling")).toBe(true);
+    expect(render("p", slash("a/b/c.md")).isOpen(slash("a/sibling"))).toBe(
+      true,
+    );
     expect(readStore()).toEqual({
       p: { expanded: ["a", "a/sibling"], lastAccess: NOW + 5 },
     });
@@ -191,7 +193,7 @@ describe("useFileTreeState", () => {
     const fileTree = render("p", slash("a/b/c.md"));
     fileTree.toggle(slash("a/b"));
 
-    expect(render("p", slash("a/b/c.md")).isOpen("a/b")).toBe(false);
+    expect(render("p", slash("a/b/c.md")).isOpen(slash("a/b"))).toBe(false);
     expect(readStore().p?.expanded).toEqual([]);
   });
 
@@ -199,7 +201,7 @@ describe("useFileTreeState", () => {
     seedStore({ p: { expanded: ["z", "m"], lastAccess: NOW } });
     render("p", slash("root.md")).toggle(slash("z"));
 
-    expect(render("p", slash("root.md")).isOpen("z")).toBe(false);
+    expect(render("p", slash("root.md")).isOpen(slash("z"))).toBe(false);
     expect(readStore().p?.expanded).toEqual(["m"]);
   });
 
@@ -215,23 +217,23 @@ describe("useFileTreeState", () => {
     render("p", slash("root.md")).reveal(slash("x/y/z.md"));
     const fileTree = render("p", slash("root.md"));
 
-    expect(fileTree.isOpen("x")).toBe(true);
-    expect(fileTree.isOpen("x/y")).toBe(true);
-    expect(fileTree.isOpen("z")).toBe(false);
+    expect(fileTree.isOpen(slash("x"))).toBe(true);
+    expect(fileTree.isOpen(slash("x/y"))).toBe(true);
+    expect(fileTree.isOpen(slash("z"))).toBe(false);
     expect(readStore().p?.expanded).toEqual([]);
   });
 
   it("keeps a closed ancestor closed across re-renders without a reveal", () => {
     render("p", slash("a/b/c.md")).toggle(slash("a"));
 
-    expect(render("p", slash("a/b/c.md")).isOpen("a")).toBe(false);
+    expect(render("p", slash("a/b/c.md")).isOpen(slash("a"))).toBe(false);
   });
 
   it("reopens a closed ancestor when the same file is revealed again", () => {
     render("p", slash("a/b/c.md")).toggle(slash("a"));
     render("p", slash("a/b/c.md")).reveal(slash("a/b/c.md"));
 
-    expect(render("p", slash("a/b/c.md")).isOpen("a")).toBe(true);
+    expect(render("p", slash("a/b/c.md")).isOpen(slash("a"))).toBe(true);
   });
 
   it("keeps working in memory when localStorage throws", () => {
@@ -245,8 +247,8 @@ describe("useFileTreeState", () => {
     vi.stubGlobal("localStorage", throwing);
 
     const fileTree = render("p", slash("root.md"));
-    expect(fileTree.isOpen("z")).toBe(false);
+    expect(fileTree.isOpen(slash("z"))).toBe(false);
     fileTree.toggle(slash("z"));
-    expect(render("p", slash("root.md")).isOpen("z")).toBe(true);
+    expect(render("p", slash("root.md")).isOpen(slash("z"))).toBe(true);
   });
 });

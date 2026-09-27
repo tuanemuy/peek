@@ -35,7 +35,7 @@ export function initialOpenState(
 
 export function isDirectoryOpen(
   state: FileTreeOpenState,
-  path: string,
+  path: SlashPath,
 ): boolean {
   return state.expanded.has(path) || state.revealed.has(path);
 }

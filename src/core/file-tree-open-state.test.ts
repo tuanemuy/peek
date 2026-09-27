@@ -65,22 +65,22 @@ describe("initialOpenState", () => {
 
   it("does not open a directory whose name is a prefix of an ancestor", () => {
     const initial = initialOpenState(tree, slash("ab/c.md"));
-    expect(isDirectoryOpen(initial, "ab")).toBe(true);
-    expect(isDirectoryOpen(initial, "a")).toBe(false);
+    expect(isDirectoryOpen(initial, slash("ab"))).toBe(true);
+    expect(isDirectoryOpen(initial, slash("a"))).toBe(false);
   });
 });
 
 describe("isDirectoryOpen", () => {
   it("is open when the path is only user-expanded", () => {
-    expect(isDirectoryOpen(state(["a"], []), "a")).toBe(true);
+    expect(isDirectoryOpen(state(["a"], []), slash("a"))).toBe(true);
   });
 
   it("is open when the path is only revealed", () => {
-    expect(isDirectoryOpen(state([], ["a"]), "a")).toBe(true);
+    expect(isDirectoryOpen(state([], ["a"]), slash("a"))).toBe(true);
   });
 
   it("is closed when the path is in neither set", () => {
-    expect(isDirectoryOpen(state(["a"], ["b"]), "c")).toBe(false);
+    expect(isDirectoryOpen(state(["a"], ["b"]), slash("c"))).toBe(false);
   });
 });
 
@@ -111,7 +111,7 @@ describe("toggleDirectory", () => {
 
   it("closes a directory that is both user-expanded and revealed", () => {
     const closed = toggleDirectory(state(["a"], ["a"]), tree, slash("a"));
-    expect(isDirectoryOpen(closed, "a")).toBe(false);
+    expect(isDirectoryOpen(closed, slash("a"))).toBe(false);
   });
 
   it("keeps descendants user-expanded when closing a directory", () => {
@@ -140,7 +140,7 @@ describe("revealFile", () => {
   it("reopens a revealed ancestor the user had closed", () => {
     const closed = toggleDirectory(state([], ["a"]), tree, slash("a"));
     expect(
-      isDirectoryOpen(revealFile(closed, tree, slash("a/d.md")), "a"),
+      isDirectoryOpen(revealFile(closed, tree, slash("a/d.md")), slash("a")),
     ).toBe(true);
   });
 

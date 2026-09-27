@@ -20,7 +20,7 @@ import {
 } from "../lib/file-tree-state.js";
 
 export type FileTreeState = {
-  readonly isOpen: (path: string) => boolean;
+  readonly isOpen: (path: SlashPath) => boolean;
   readonly toggle: (path: SlashPath) => void;
   readonly reveal: (filePath: SlashPath) => void;
 };
@@ -106,7 +106,7 @@ export function useFileTreeState(
   }, []);
 
   const isOpen = useCallback(
-    (path: string) => isDirectoryOpen(state, path),
+    (path: SlashPath) => isDirectoryOpen(state, path),
     [state],
   );
 

@@ -54,7 +54,7 @@ describe("useSseUpdates", () => {
       useSseUpdates({
         onContentUpdate,
         onHtmlReload,
-        getCurrentPath: () => "docs/page.html",
+        getCurrentPath: () => slash("docs/page.html"),
         getCurrentContentType: () => "html",
         onTreeUpdate: vi.fn(),
       });
@@ -74,7 +74,7 @@ describe("useSseUpdates", () => {
       useSseUpdates({
         onContentUpdate,
         onHtmlReload,
-        getCurrentPath: () => "docs/page.html",
+        getCurrentPath: () => slash("docs/page.html"),
         getCurrentContentType: () => "html",
         onTreeUpdate: vi.fn(),
       });
@@ -94,7 +94,7 @@ describe("useSseUpdates", () => {
 
       useSseUpdates({
         onContentUpdate,
-        getCurrentPath: () => "docs/readme.md",
+        getCurrentPath: () => slash("docs/readme.md"),
         getCurrentContentType: () => "markdown",
         onTreeUpdate: vi.fn(),
       });
@@ -116,7 +116,7 @@ describe("useSseUpdates", () => {
     it("changes behavior when contentType switches from HTML to MD to HTML", async () => {
       const onContentUpdate = vi.fn();
       const onHtmlReload = vi.fn();
-      let currentPath = "page.html";
+      let currentPath = slash("page.html");
       let currentContentType: ContentType = "html";
 
       useSseUpdates({
@@ -136,7 +136,7 @@ describe("useSseUpdates", () => {
       expect(fetchContent).not.toHaveBeenCalled();
 
       // Phase 2: Navigate to MD (simulate DirectoryApp state change)
-      currentPath = "readme.md";
+      currentPath = slash("readme.md");
       currentContentType = "markdown";
       onHtmlReload.mockClear();
 
@@ -150,7 +150,7 @@ describe("useSseUpdates", () => {
       expect(onHtmlReload).not.toHaveBeenCalled();
 
       // Phase 3: Navigate back to HTML
-      currentPath = "page.html";
+      currentPath = slash("page.html");
       currentContentType = "html";
       onContentUpdate.mockClear();
       onHtmlReload.mockClear();
@@ -169,7 +169,7 @@ describe("useSseUpdates", () => {
 
       useSseUpdates({
         onContentUpdate,
-        getCurrentPath: () => "docs/readme.md",
+        getCurrentPath: () => slash("docs/readme.md"),
         getCurrentContentType: () => "markdown",
         onTreeUpdate: vi.fn(),
       });
@@ -186,7 +186,7 @@ describe("useSseUpdates", () => {
 
       useSseUpdates({
         onContentUpdate,
-        getCurrentPath: () => "docs/readme.md",
+        getCurrentPath: () => slash("docs/readme.md"),
         getCurrentContentType: () => "markdown",
         onTreeUpdate: vi.fn(),
       });
@@ -203,7 +203,7 @@ describe("useSseUpdates", () => {
 
       useSseUpdates({
         onContentUpdate,
-        getCurrentPath: () => "docs/readme.md",
+        getCurrentPath: () => slash("docs/readme.md"),
         getCurrentContentType: () => "markdown",
         onTreeUpdate: vi.fn(),
       });
@@ -250,7 +250,7 @@ describe("useSseUpdates", () => {
 
       useSseUpdates({
         onContentUpdate: vi.fn(),
-        getCurrentPath: () => "readme.md",
+        getCurrentPath: () => slash("readme.md"),
         getCurrentContentType: () => "markdown",
         onTreeUpdate,
       });
@@ -283,7 +283,7 @@ describe("useSseUpdates", () => {
 
       useSseUpdates({
         onContentUpdate: vi.fn(),
-        getCurrentPath: () => "readme.md",
+        getCurrentPath: () => slash("readme.md"),
         getCurrentContentType: () => "markdown",
         onTreeUpdate,
       });
