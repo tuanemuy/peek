@@ -1,0 +1,82 @@
+# Observes #138 on Windows. To run it, copy this file to
+# .github/workflows/windows-observation.yml on a branch named
+# issue/138/windows-observation and push that branch.
+name: Windows observation (#138)
+
+on:
+  push:
+    branches: [issue/138/windows-observation]
+
+jobs:
+  observe:
+    runs-on: windows-latest
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - label: after
+            ref: issue/138/normalize-tree-path-separators
+          - label: before
+            ref: 6633c9ea915a9407fde380f727646d0cb92981f0
+
+    steps:
+      - name: Checkout observation script
+        uses: actions/checkout@v7
+        with:
+          path: obs
+
+      - name: Checkout peek
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ matrix.ref }}
+          path: app
+
+      - name: Record the observed commit
+        working-directory: app
+        run: git rev-parse HEAD
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v5
+        with:
+          package_json_file: app/package.json
+
+      - name: Build peek
+        working-directory: app
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm build
+
+      - name: Test
+        continue-on-error: true
+        working-directory: app
+        run: |
+          New-Item -ItemType Directory -Force -Path "$env:RUNNER_TEMP\out" | Out-Null
+          pnpm run pretest
+          pnpm exec vitest run --reporter=default --reporter=json --outputFile.json="$env:RUNNER_TEMP\out\vitest.json"
+
+      - name: Install Playwright
+        working-directory: obs/.thread/138/windows-observation
+        run: |
+          npm install --no-save playwright@1
+          npx playwright install chromium
+
+      - name: Observe
+        continue-on-error: ${{ matrix.label == 'before' }}
+        run: node obs/.thread/138/windows-observation/observe.mjs
+        env:
+          APP: ${{ github.workspace }}\app\dist\index.mjs
+          FIXTURE: ${{ runner.temp }}\fixture
+          OUT: ${{ runner.temp }}\out
+
+      - name: Upload observation
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: observation-${{ matrix.label }}
+          path: ${{ runner.temp }}\out

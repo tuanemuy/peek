@@ -1,19 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { getFileNameFromPath, normalizePath } from "./path-utils.js";
-
-describe("normalizePath", () => {
-  it("replaces backslashes with forward slashes", () => {
-    expect(normalizePath("foo\\bar\\baz")).toBe("foo/bar/baz");
-  });
-
-  it("returns the same string when no backslashes are present", () => {
-    expect(normalizePath("foo/bar/baz")).toBe("foo/bar/baz");
-  });
-
-  it("returns empty string for empty input", () => {
-    expect(normalizePath("")).toBe("");
-  });
-});
+import { getFileNameFromPath } from "./path-utils.js";
 
 describe("getFileNameFromPath", () => {
   it("extracts the file name from a path", () => {

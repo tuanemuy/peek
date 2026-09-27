@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { FileTreeNode } from "../core/file-tree.js";
+import { slash } from "../test-utils/slash-path.js";
 
 // Hooks reduced to plain values (no DOM): DirectoryApp is called as a function
 // to inspect how it wires the navigation callback to the file tree state.
@@ -43,9 +44,9 @@ const { DirectoryApp } = await import("./directory-app.js");
 const tree: readonly FileTreeNode[] = [
   {
     name: "a",
-    path: "a",
+    path: slash("a"),
     type: "directory",
-    children: [{ name: "c.md", path: "a/c.md", type: "file" }],
+    children: [{ name: "c.md", path: slash("a/c.md"), type: "file" }],
   },
 ];
 
@@ -53,7 +54,7 @@ function renderApp(): (path: string, html: string) => void {
   DirectoryApp({
     projectId: "p",
     dirTitle: "proj",
-    currentPath: "root.md",
+    currentPath: slash("root.md"),
     contentType: "markdown",
     content: "",
     tree,
@@ -78,8 +79,8 @@ describe("DirectoryApp file tree wiring", () => {
   it("reveals the file of every successful navigation, including the current one", () => {
     const onNavigated = renderApp();
 
-    onNavigated("a/c.md", "<p>c</p>");
-    onNavigated("a/c.md", "<p>c</p>");
+    onNavigated(slash("a/c.md"), "<p>c</p>");
+    onNavigated(slash("a/c.md"), "<p>c</p>");
 
     expect(fileTree.reveal.mock.calls).toEqual([["a/c.md"], ["a/c.md"]]);
   });
@@ -88,8 +89,8 @@ describe("DirectoryApp file tree wiring", () => {
     const error = vi.spyOn(console, "error").mockImplementation(() => {});
     const onNavigated = renderApp();
 
-    onNavigated("a/image.png", "");
-    onNavigated("a/c.md", "<p>c</p>");
+    onNavigated(slash("a/image.png"), "");
+    onNavigated(slash("a/c.md"), "<p>c</p>");
 
     expect(fileTree.reveal.mock.calls).toEqual([["a/c.md"]]);
     expect(error).toHaveBeenCalledWith(

@@ -1,14 +1,15 @@
 import type { FileTreeNode } from "../../core/file-tree.js";
+import type { SlashPath } from "../../core/slash-path.js";
 import { ChevronDownIcon, FileIcon, FolderIcon } from "../icons/index.js";
 
 const MAX_DEPTH = 20;
 
 type FileTreeItemsProps = {
   readonly nodes: readonly FileTreeNode[];
-  readonly currentPath?: string;
+  readonly currentPath?: SlashPath;
   readonly depth?: number;
-  readonly isOpen: (path: string) => boolean;
-  readonly onToggle?: (path: string) => void;
+  readonly isOpen: (path: SlashPath) => boolean;
+  readonly onToggle?: (path: SlashPath) => void;
 };
 
 function DirectoryItem({
@@ -19,10 +20,10 @@ function DirectoryItem({
   onToggle,
 }: {
   readonly node: FileTreeNode;
-  readonly currentPath?: string;
+  readonly currentPath?: SlashPath;
   readonly depth: number;
-  readonly isOpen: (path: string) => boolean;
-  readonly onToggle?: (path: string) => void;
+  readonly isOpen: (path: SlashPath) => boolean;
+  readonly onToggle?: (path: SlashPath) => void;
 }) {
   const open = isOpen(node.path);
 

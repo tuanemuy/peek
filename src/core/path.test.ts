@@ -1,5 +1,12 @@
-import { describe, expect, it } from "vitest";
-import { isRelativePathWithinBase, isWithinBase } from "./path.js";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { osSeparator } from "../test-utils/os-separator.js";
+import { isRelativePathWithinBase, isWithinBase, toSlashPath } from "./path.js";
+
+// `sep` follows `osSeparator`, to run the Windows branch on any host.
+vi.mock("node:path", async (importOriginal) => {
+  const { withSwitchableSep } = await import("../test-utils/os-separator.js");
+  return withSwitchableSep(await importOriginal<typeof import("node:path")>());
+});
 
 describe("isWithinBase", () => {
   it("returns true for a child path", () => {
@@ -88,5 +95,39 @@ describe("isRelativePathWithinBase", () => {
     expect(isRelativePathWithinBase("/home/user/docs", "/etc/passwd")).toBe(
       false,
     );
+  });
+});
+
+describe("toSlashPath", () => {
+  afterEach(() => {
+    osSeparator.value = undefined;
+  });
+
+  describe("on POSIX", () => {
+    beforeEach(() => {
+      osSeparator.value = "/";
+    });
+
+    it("keeps a /-separated path as is", () => {
+      expect(toSlashPath("docs/api/ref.md")).toBe("docs/api/ref.md");
+    });
+
+    it("keeps a backslash as part of a file name", () => {
+      expect(toSlashPath("docs/a\\b.md")).toBe("docs/a\\b.md");
+    });
+  });
+
+  describe("on Windows", () => {
+    beforeEach(() => {
+      osSeparator.value = "\\";
+    });
+
+    it("replaces every backslash with /", () => {
+      expect(toSlashPath("docs\\api\\ref.md")).toBe("docs/api/ref.md");
+    });
+
+    it("keeps a /-separated path as is", () => {
+      expect(toSlashPath("docs/api/ref.md")).toBe("docs/api/ref.md");
+    });
   });
 });

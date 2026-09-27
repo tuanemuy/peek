@@ -1,11 +1,12 @@
 import type { ContentType } from "./content-type.js";
 import type { FileTreeNode } from "./file-tree.js";
+import type { SlashPath } from "./slash-path.js";
 
 export type DirectoryInitialState = {
   readonly mode: "directory";
   readonly projectId: string;
   readonly dirTitle: string;
-  readonly currentPath: string;
+  readonly currentPath: SlashPath;
   readonly contentType: ContentType;
   readonly content: string;
   readonly tree: readonly FileTreeNode[];

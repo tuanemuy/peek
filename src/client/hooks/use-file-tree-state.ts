@@ -7,6 +7,7 @@ import {
   revealFile,
   toggleDirectory,
 } from "../../core/file-tree-open-state.js";
+import type { SlashPath } from "../../core/slash-path.js";
 import {
   FILE_TREE_STATE_KEY,
   type FileTreeStateStore,
@@ -19,9 +20,9 @@ import {
 } from "../lib/file-tree-state.js";
 
 export type FileTreeState = {
-  readonly isOpen: (path: string) => boolean;
-  readonly toggle: (path: string) => void;
-  readonly reveal: (filePath: string) => void;
+  readonly isOpen: (path: SlashPath) => boolean;
+  readonly toggle: (path: SlashPath) => void;
+  readonly reveal: (filePath: SlashPath) => void;
 };
 
 /**
@@ -31,7 +32,7 @@ export type FileTreeState = {
 export function useFileTreeState(
   projectId: string,
   tree: readonly FileTreeNode[],
-  initialPath: string,
+  initialPath: SlashPath,
 ): FileTreeState {
   // Start from the same state as the SSR markup (only the ancestors of the
   // displayed file open). Restoration happens in useLayoutEffect, after mount.
@@ -88,7 +89,7 @@ export function useFileTreeState(
   }, [projectId]);
 
   const toggle = useCallback(
-    (path: string) => {
+    (path: SlashPath) => {
       const next = toggleDirectory(stateRef.current, treeRef.current, path);
       update(next);
       // Re-read the latest store before writing so concurrent updates from
@@ -100,12 +101,12 @@ export function useFileTreeState(
     [projectId],
   );
 
-  const reveal = useCallback((filePath: string) => {
+  const reveal = useCallback((filePath: SlashPath) => {
     update(revealFile(stateRef.current, treeRef.current, filePath));
   }, []);
 
   const isOpen = useCallback(
-    (path: string) => isDirectoryOpen(state, path),
+    (path: SlashPath) => isDirectoryOpen(state, path),
     [state],
   );
 

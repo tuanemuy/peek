@@ -8,6 +8,7 @@ import {
   vi,
 } from "vitest";
 import type { ContentType } from "../../core/content-type.js";
+import { slash } from "../../test-utils/slash-path.js";
 import type { SseCallbacks } from "../lib/sse.js";
 
 // Mock useEffect to run callback synchronously (no DOM needed)
@@ -53,13 +54,13 @@ describe("useSseUpdates", () => {
       useSseUpdates({
         onContentUpdate,
         onHtmlReload,
-        getCurrentPath: () => "docs/page.html",
+        getCurrentPath: () => slash("docs/page.html"),
         getCurrentContentType: () => "html",
         onTreeUpdate: vi.fn(),
       });
 
       const { onFileChanged } = getSseCallbacks();
-      onFileChanged("docs/page.html");
+      onFileChanged(slash("docs/page.html"));
 
       expect(onHtmlReload).toHaveBeenCalledOnce();
       expect(onContentUpdate).not.toHaveBeenCalled();
@@ -73,13 +74,13 @@ describe("useSseUpdates", () => {
       useSseUpdates({
         onContentUpdate,
         onHtmlReload,
-        getCurrentPath: () => "docs/page.html",
+        getCurrentPath: () => slash("docs/page.html"),
         getCurrentContentType: () => "html",
         onTreeUpdate: vi.fn(),
       });
 
       const { onFileChanged } = getSseCallbacks();
-      onFileChanged("other/file.html");
+      onFileChanged(slash("other/file.html"));
 
       expect(onHtmlReload).not.toHaveBeenCalled();
       expect(onContentUpdate).not.toHaveBeenCalled();
@@ -93,13 +94,13 @@ describe("useSseUpdates", () => {
 
       useSseUpdates({
         onContentUpdate,
-        getCurrentPath: () => "docs/readme.md",
+        getCurrentPath: () => slash("docs/readme.md"),
         getCurrentContentType: () => "markdown",
         onTreeUpdate: vi.fn(),
       });
 
       const { onFileChanged } = getSseCallbacks();
-      onFileChanged("docs/readme.md");
+      onFileChanged(slash("docs/readme.md"));
 
       // Wait for the fetchContent promise to resolve
       await vi.waitFor(() => {
@@ -115,7 +116,7 @@ describe("useSseUpdates", () => {
     it("changes behavior when contentType switches from HTML to MD to HTML", async () => {
       const onContentUpdate = vi.fn();
       const onHtmlReload = vi.fn();
-      let currentPath = "page.html";
+      let currentPath = slash("page.html");
       let currentContentType: ContentType = "html";
 
       useSseUpdates({
@@ -129,17 +130,17 @@ describe("useSseUpdates", () => {
       const { onFileChanged } = getSseCallbacks();
 
       // Phase 1: HTML file — should call onHtmlReload, skip fetchContent
-      onFileChanged("page.html");
+      onFileChanged(slash("page.html"));
       expect(onHtmlReload).toHaveBeenCalledOnce();
       expect(onContentUpdate).not.toHaveBeenCalled();
       expect(fetchContent).not.toHaveBeenCalled();
 
       // Phase 2: Navigate to MD (simulate DirectoryApp state change)
-      currentPath = "readme.md";
+      currentPath = slash("readme.md");
       currentContentType = "markdown";
       onHtmlReload.mockClear();
 
-      onFileChanged("readme.md");
+      onFileChanged(slash("readme.md"));
       await vi.waitFor(() => {
         expect(fetchContent).toHaveBeenCalledWith("readme.md", {
           signal: expect.any(AbortSignal),
@@ -149,13 +150,13 @@ describe("useSseUpdates", () => {
       expect(onHtmlReload).not.toHaveBeenCalled();
 
       // Phase 3: Navigate back to HTML
-      currentPath = "page.html";
+      currentPath = slash("page.html");
       currentContentType = "html";
       onContentUpdate.mockClear();
       onHtmlReload.mockClear();
       vi.mocked(fetchContent).mockClear();
 
-      onFileChanged("page.html");
+      onFileChanged(slash("page.html"));
       expect(onHtmlReload).toHaveBeenCalledOnce();
       expect(onContentUpdate).not.toHaveBeenCalled();
       expect(fetchContent).not.toHaveBeenCalled();
@@ -168,7 +169,7 @@ describe("useSseUpdates", () => {
 
       useSseUpdates({
         onContentUpdate,
-        getCurrentPath: () => "docs/readme.md",
+        getCurrentPath: () => slash("docs/readme.md"),
         getCurrentContentType: () => "markdown",
         onTreeUpdate: vi.fn(),
       });
@@ -185,13 +186,30 @@ describe("useSseUpdates", () => {
 
       useSseUpdates({
         onContentUpdate,
-        getCurrentPath: () => "docs/readme.md",
+        getCurrentPath: () => slash("docs/readme.md"),
         getCurrentContentType: () => "markdown",
         onTreeUpdate: vi.fn(),
       });
 
       const { onFileChanged } = getSseCallbacks();
-      onFileChanged("other/file.md");
+      onFileChanged(slash("other/file.md"));
+
+      expect(onContentUpdate).not.toHaveBeenCalled();
+      expect(fetchContent).not.toHaveBeenCalled();
+    });
+
+    it("treats a backslash as part of a file name, not as a separator", () => {
+      const onContentUpdate = vi.fn();
+
+      useSseUpdates({
+        onContentUpdate,
+        getCurrentPath: () => slash("docs/readme.md"),
+        getCurrentContentType: () => "markdown",
+        onTreeUpdate: vi.fn(),
+      });
+
+      const { onFileChanged } = getSseCallbacks();
+      onFileChanged(slash("docs\\readme.md"));
 
       expect(onContentUpdate).not.toHaveBeenCalled();
       expect(fetchContent).not.toHaveBeenCalled();
@@ -207,7 +225,7 @@ describe("useSseUpdates", () => {
       });
 
       const { onFileChanged } = getSseCallbacks();
-      onFileChanged("any/file.md");
+      onFileChanged(slash("any/file.md"));
 
       await vi.waitFor(() => {
         expect(fetchContent).toHaveBeenCalledWith(undefined, {
@@ -222,13 +240,17 @@ describe("useSseUpdates", () => {
     it("registers onTreeChanged when onTreeUpdate is provided", async () => {
       const onTreeUpdate = vi.fn();
       const treeData = [
-        { name: "readme.md", path: "readme.md", type: "file" as const },
+        {
+          name: "readme.md",
+          path: slash("readme.md"),
+          type: "file" as const,
+        },
       ];
       vi.mocked(fetchTree).mockResolvedValue(treeData);
 
       useSseUpdates({
         onContentUpdate: vi.fn(),
-        getCurrentPath: () => "readme.md",
+        getCurrentPath: () => slash("readme.md"),
         getCurrentContentType: () => "markdown",
         onTreeUpdate,
       });
@@ -261,7 +283,7 @@ describe("useSseUpdates", () => {
 
       useSseUpdates({
         onContentUpdate: vi.fn(),
-        getCurrentPath: () => "readme.md",
+        getCurrentPath: () => slash("readme.md"),
         getCurrentContentType: () => "markdown",
         onTreeUpdate,
       });
@@ -293,9 +315,9 @@ describe("useSseUpdates", () => {
 
       const { onFileChanged } = getSseCallbacks();
       // First event starts a fetch
-      onFileChanged("file.md");
+      onFileChanged(slash("file.md"));
       // Second event should abort the first
-      onFileChanged("file.md");
+      onFileChanged(slash("file.md"));
 
       // Resolve the first (should be ignored since aborted)
       resolveFirst?.("<p>first</p>");
@@ -315,7 +337,7 @@ describe("useSseUpdates", () => {
       });
 
       const { onFileChanged } = getSseCallbacks();
-      onFileChanged("file.md");
+      onFileChanged(slash("file.md"));
 
       await vi.waitFor(() => {
         expect(fetchContent).toHaveBeenCalled();
@@ -334,7 +356,7 @@ describe("useSseUpdates", () => {
       });
 
       const { onFileChanged } = getSseCallbacks();
-      onFileChanged("file.md");
+      onFileChanged(slash("file.md"));
 
       await vi.waitFor(() => {
         expect(consoleSpy).toHaveBeenCalledWith(
@@ -360,7 +382,7 @@ describe("useSseUpdates", () => {
       });
 
       const { onFileChanged } = getSseCallbacks();
-      onFileChanged("file.md");
+      onFileChanged(slash("file.md"));
 
       // Give time for the promise to settle
       await new Promise((r) => setTimeout(r, 10));

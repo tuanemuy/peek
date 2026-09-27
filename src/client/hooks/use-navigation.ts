@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef } from "preact/hooks";
+import type { SlashPath } from "../../core/slash-path.js";
 import { fetchContent } from "../lib/api-client.js";
-import { getFileNameFromPath } from "../lib/path-utils.js";
+import { getFileNameFromPath, readViewPath } from "../lib/path-utils.js";
 
 /**
  * SPA navigation hook for directory mode.
@@ -8,15 +9,15 @@ import { getFileNameFromPath } from "../lib/path-utils.js";
  * and initial history state into a single effect.
  */
 export function useNavigation(
-  onNavigated: (path: string, html: string) => void,
-): (path: string, pushState: boolean) => void {
+  onNavigated: (path: SlashPath, html: string) => void,
+): (path: SlashPath, pushState: boolean) => void {
   const navControllerRef = useRef<AbortController | null>(null);
   // Ref avoids stale closure — onNavigated identity may change each render
   const onNavigatedRef = useRef(onNavigated);
   onNavigatedRef.current = onNavigated;
 
   const navigateToFile = useCallback(
-    async (path: string, pushState: boolean) => {
+    async (path: SlashPath, pushState: boolean) => {
       if (navControllerRef.current) navControllerRef.current.abort();
       const controller = new AbortController();
       navControllerRef.current = controller;
@@ -69,7 +70,7 @@ export function useNavigation(
       if (!path) return;
 
       e.preventDefault();
-      navigateToFile(path, true);
+      navigateToFile(readViewPath(path), true);
     }
 
     // Browser back/forward
@@ -78,7 +79,7 @@ export function useNavigation(
       const path =
         state?.path ?? new URLSearchParams(window.location.search).get("path");
       if (path) {
-        navigateToFile(path, false);
+        navigateToFile(readViewPath(path), false);
       } else {
         window.location.reload();
       }
