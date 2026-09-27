@@ -7,7 +7,15 @@
 ## パスの形
 
 - `FileTreeNode.path` と SSE の `file-changed` の `path` は、ディレクトリモードの基準ディレクトリからの `/` 区切りの相対パス
-- `/` 区切りであることは型 `SlashPath`（`src/core/slash-path.ts` のブランド型）で表す。`FileTreeNode.path` は `SlashPath` で、サーバーで `SlashPath` を作るのは `toSlashPath` だけ。OS の相対パスをそのままノードに入れると型エラーになる
+- `/` 区切りであることは型 `SlashPath`（`src/core/slash-path.ts` のブランド型）で表す。サーバーで `SlashPath` を作るのは `toSlashPath` だけ。次の値を `SlashPath` にし、OS の相対パスや生の文字列をそのまま入れると型エラーになる
+  - `FileTreeNode.path`
+  - 表示中のファイルのパス: `DirectoryInitialState.currentPath`、`DirectoryApp` の `currentPath`、`initialOpenState`・`revealFile`・`findAncestorPaths` が受け取るパス
+  - ディレクトリのトグルに渡すパス（`toggleDirectory`）
+  - クライアントが受け取る変更通知の `path`
+- クライアントは OS を知らないので、外から来るパスを `SlashPath` として読む境界を 1 か所ずつ持つ。どれも検証はせず、サーバーが `/` 区切りで渡すという契約に基づいて型を付ける
+  - `/view` の URL の `?path=` と履歴の `state.path`: `src/client/lib/path-utils.ts` の 1 関数
+  - `/api/tree` の JSON: `fetchTree`（従来どおり）
+  - SSE の `file-changed`: `parseFileChangedData`
 - OS の区切り（`path.sep`）を `/` に置き換える規則は `src/core/path.ts` の `toSlashPath` 1 関数だけが持つ。POSIX では `\` はファイル名の文字なので置き換えない
 - Issue の完了条件「そろえる処理がツリーを作る境界の 1 か所だけにある」は、規則（置き換えの実装）が 1 か所にあることと読む。Issue の本文どおりツリーだけでそろえると、Windows の `fs.watch` が返す `\` 区切りの通知をそろえる置き換えがどこかに残り、同じ規則が 2 か所になるため。規則を適用するのは、OS 形式のパスがサーバーに入って core・クライアントの比較に届く次の 3 か所で、どれも `toSlashPath` を呼ぶだけで自前の置き換えを持たない
   - `buildFileTree`（`src/lib/file-tree.ts`）: `path.relative` から作るノードの `path`
@@ -31,19 +39,21 @@
 | # | 基準 | 観測方法 |
 | --- | --- | --- |
 | AC1 | Windows 形式（`sep` が `\`、`relative` が `\` 区切り）の入力で `buildFileTree` を作ると、ネストしたディレクトリ・ファイルを含む全ノードの `path` が `/` 区切りになる | 自動テスト（`node:path` をモック） |
-| AC2 | POSIX で `\` を含むファイル名のノードの `path` は `\` を保つ。`buildFileTree` がノードに OS の相対パスをそのまま入れると型エラーになる | 自動テスト、typecheck |
+| AC2 | POSIX で `\` を含むファイル名のノードの `path` は `\` を保つ。`FileTreeNode.path`・`DirectoryInitialState.currentPath`・`findAncestorPaths` の引数に生の文字列を入れると型エラーになる | 自動テスト、`@ts-expect-error` による型のテスト（typecheck） |
 | AC3 | `toSlashPath` は `sep` が `\` なら `\` を `/` に置き換え、`sep` が `/` なら入力をそのまま返す | 自動テスト（`sep` をモック） |
 | AC4 | watcher の変更通知の `path` は、Windows では `\` を `/` にしたもの、POSIX では `\` を含むファイル名をそのまま保ったもの | 自動テスト（watcher をモックし、`sep` を切り替えて通知される `path` を見る） |
 | AC5 | `findAncestorPaths` は区切り文字を読み取らず、ディレクトリ（`type === "directory"`）のうち「そのパス + `/`」で始まるものを祖先として返す。名前が前方一致するだけのディレクトリ（`docs` と `docs-old`）は祖先にしない。`\` はそのディレクトリの区切りとして扱わない。`.gitignore` でツリーから外れたファイルでも、ツリーにある祖先を返す。`\` 区切りのツリーを前提にした既存テストは削除する | 自動テスト |
 | AC6 | Windows 形式の入力で作ったツリーを、本文中のリンクと同じ `/` 区切りの `currentPath`（`a/b/c.md`）で描くと、`c.md` の行が表示中として強調され、`a`・`a/b` が開いている。SSR の初期状態と、`root.md` から移動したとき（`revealFile`）の両方 | 自動テスト（AC1 と同じモックで作ったツリーをサイドバーに描く）、Windows 実機の browser |
 | AC7 | `\` を `/` に置き換える処理は `toSlashPath` だけにある。クライアントの `normalizePath`（呼び出し元 `src/client/lib/sse.ts`・`src/client/hooks/use-sse-updates.ts`、テスト `src/client/lib/path-utils.test.ts`）、watcher の `replace(/\\/g, "/")`、`findAncestorPaths` の区切り読み取りは無くなる。テストも置き換えを自前で書かず、`sep` を切り替えて `toSlashPath` を通す | コマンド出力（`src/` 全体の grep。テストを含む） |
-| AC8 | Windows で `/view` は `toSlashPath` で変わるパスを 302 でそろえた URL へリダイレクトし、403 / 404 の判定より先に行う。POSIX では `\` を含むファイル名の `?path=` もリダイレクトせずに描く | 自動テスト（`sep` を切り替える）、Windows 実機の browser |
+| AC8 | Windows で `/view` は `toSlashPath` で変わるパスを 302 でそろえた URL へリダイレクトし、403 / 404 の判定より先に行う。POSIX では `\` を含むファイル名の `?path=` もリダイレクトせずに描く | 自動テスト（`sep` を切り替える）、Windows 実機の browser（302 の応答と、たどり着いた画面） |
 | AC9 | Windows の `resolve` が `/` 区切りの相対パスを基準ディレクトリの下のパスに解決する（`/view`・`/api/content`・`/__peek/raw/` が `/` 区切りで動く前提） | コマンド出力（`path.win32.resolve` / `isWithinBase` 相当の確認） |
 | AC10 | 本文中の `/view?path=a/b/c.md` のリンクから移動すると、ツリーで `a`・`a/b` が開き、`c.md` の行が表示中として強調される | browser（Windows 実機・darwin） |
-| AC11 | 表示中のファイルを書き換えると本文がライブリロードされ、別のファイルの変更では再読込されない | browser（Windows 実機・darwin）＋ 自動テスト |
+| AC11 | 表示中のファイルを書き換えると、本文がページの再読み込みなしに更新される。別のファイルを書き換えると、変更通知は届いてツリーを再取得し、本文は再取得しない | browser（Windows 実機・darwin）＋ 自動テスト |
 | AC12 | サイドバーのリンク・`/`（最初のファイル）・`/api/content`・`/__peek/raw/`・`/<相対パス>` がこれまでどおり動く | 既存の自動テスト ＋ browser（Windows 実機・darwin） |
 
-darwin では `toSlashPath` が恒等なので、darwin の観測は変更の前後で結果が変わらないことの確認。Windows での一致は GitHub Actions の `windows-latest` 上で peek を動かし、ブラウザで観測する。同じ手順を変更前（`origin/main`）にも流し、結果の違いを記録する。観測は各ビューポートで行う。
+darwin では `toSlashPath` が恒等なので、darwin の観測は変更の前後で結果が変わらないことの確認。Windows での一致は GitHub Actions の `windows-latest` 上で peek を動かし、ブラウザで観測する。同じ手順を変更前（`origin/main`）にも流し、結果の違いを記録する。観測は各ビューポートで行う。観測するのは PR の最終コミットで、観測したコミットを PR に書く。
+
+既存の振る舞いについては、同じ `windows-latest` で変更前と変更後の `pnpm test` を実行し、変更後に新しく失敗するテストが無いことを確かめる（変更前から Windows で失敗するテストは、この PR の範囲外として一覧を記録する）。観測スクリプトとワークフローは `.thread/138/windows-observation/` に残す。
 
 ## スコープ
 
