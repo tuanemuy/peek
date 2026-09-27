@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { type FileTreeNode, filterFileTree } from "./file-tree.js";
+import {
+  type FileTreeNode,
+  filterFileTree,
+  findAncestorPaths,
+} from "./file-tree.js";
 
 function file(name: string, path: string): FileTreeNode {
   return { name, path, type: "file" };
@@ -122,5 +126,73 @@ describe("filterFileTree", () => {
       "docs/guide.md",
       "docs/api",
     ]);
+  });
+});
+
+describe("findAncestorPaths", () => {
+  it("returns the directories containing a nested file, outermost first", () => {
+    expect(findAncestorPaths(makeTree(), "docs/api/reference.md")).toEqual([
+      "docs",
+      "docs/api",
+    ]);
+  });
+
+  it("returns the ancestors of a directory", () => {
+    expect(findAncestorPaths(makeTree(), "docs/api")).toEqual(["docs"]);
+  });
+
+  it("returns an empty list for a node at the root", () => {
+    expect(findAncestorPaths(makeTree(), "README.md")).toEqual([]);
+    expect(findAncestorPaths(makeTree(), "docs")).toEqual([]);
+  });
+
+  it("returns the directories in the tree for a file excluded from it", () => {
+    expect(findAncestorPaths(makeTree(), "docs/api/ignored.md")).toEqual([
+      "docs",
+      "docs/api",
+    ]);
+  });
+
+  it("stops at the deepest directory in the tree", () => {
+    expect(findAncestorPaths(makeTree(), "docs/ignored/deep.md")).toEqual([
+      "docs",
+    ]);
+    expect(findAncestorPaths(makeTree(), "ignored/deep.md")).toEqual([]);
+  });
+
+  it("does not treat a directory whose name is a prefix as an ancestor", () => {
+    expect(findAncestorPaths(makeTree(), "docs-old/a.md")).toEqual([]);
+  });
+
+  it("follows Windows-style paths as they appear in the tree", () => {
+    const tree = [
+      dir("docs", "docs", [
+        dir("api", "docs\\api", [file("ref.md", "docs\\api\\ref.md")]),
+      ]),
+    ];
+    expect(findAncestorPaths(tree, "docs\\api\\ref.md")).toEqual([
+      "docs",
+      "docs\\api",
+    ]);
+  });
+
+  it("accepts / in a path for a Windows-style tree", () => {
+    const tree = [
+      dir("docs", "docs", [
+        dir("api", "docs\\api", [file("ref.md", "docs\\api\\ref.md")]),
+      ]),
+    ];
+    expect(findAncestorPaths(tree, "docs/api/ref.md")).toEqual([
+      "docs",
+      "docs\\api",
+    ]);
+  });
+
+  it("treats a backslash in a POSIX file name as part of the name", () => {
+    const tree = [
+      dir("a", "a", [file("x.md", "a/x.md")]),
+      file("a\\x.md", "a\\x.md"),
+    ];
+    expect(findAncestorPaths(tree, "a\\x.md")).toEqual([]);
   });
 });

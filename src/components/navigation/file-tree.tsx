@@ -4,7 +4,7 @@ import { FileTreeItems } from "./file-tree-items.js";
 type FileTreeProps = {
   readonly nodes: readonly FileTreeNode[];
   readonly currentPath?: string;
-  readonly isOpen?: (path: string) => boolean;
+  readonly isOpen: (path: string) => boolean;
   readonly onToggle?: (path: string) => void;
 };
 

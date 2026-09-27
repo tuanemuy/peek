@@ -12,6 +12,34 @@ function matchesQuery(node: FileTreeNode, normalizedQuery: string): boolean {
 }
 
 /**
+ * Paths of the directories in the tree that contain `targetPath`, outermost
+ * first. `targetPath` itself need not be in the tree: a file excluded by
+ * `.gitignore` can still be displayed, and its directories are found.
+ *
+ * A directory contains `targetPath` when `targetPath` starts with the
+ * directory's path followed by the separator its children use. The separator
+ * is read from the tree instead of assumed: `path.relative` produces `\` on
+ * Windows, where `/` in a URL-supplied path means the same, while on POSIX `\`
+ * is an ordinary file name character.
+ */
+export function findAncestorPaths(
+  nodes: readonly FileTreeNode[],
+  targetPath: string,
+): readonly string[] {
+  for (const node of nodes) {
+    const [firstChild] = node.children ?? [];
+    if (!firstChild) continue;
+    const separator = firstChild.path.charAt(node.path.length);
+    const target =
+      separator === "\\" ? targetPath.replaceAll("/", "\\") : targetPath;
+    if (target.startsWith(`${node.path}${separator}`)) {
+      return [node.path, ...findAncestorPaths(node.children ?? [], target)];
+    }
+  }
+  return [];
+}
+
+/**
  * Filter a file tree by a search query, keeping ancestors of matched nodes so
  * that the path to each match stays visible.
  *

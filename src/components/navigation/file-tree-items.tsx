@@ -7,7 +7,7 @@ type FileTreeItemsProps = {
   readonly nodes: readonly FileTreeNode[];
   readonly currentPath?: string;
   readonly depth?: number;
-  readonly isOpen?: (path: string) => boolean;
+  readonly isOpen: (path: string) => boolean;
   readonly onToggle?: (path: string) => void;
 };
 
@@ -21,10 +21,10 @@ function DirectoryItem({
   readonly node: FileTreeNode;
   readonly currentPath?: string;
   readonly depth: number;
-  readonly isOpen?: (path: string) => boolean;
+  readonly isOpen: (path: string) => boolean;
   readonly onToggle?: (path: string) => void;
 }) {
-  const open = isOpen ? isOpen(node.path) : true;
+  const open = isOpen(node.path);
 
   return (
     <li class={depth === 0 ? "px-2 lg:px-5" : ""}>
@@ -37,7 +37,7 @@ function DirectoryItem({
         <FolderIcon class="shrink-0 size-4" />
         <span class="min-w-0 truncate">{node.name}</span>
         <ChevronDownIcon
-          class={`${open ? "" : "-rotate-180 "}shrink-0 size-3.5 ms-auto transition-transform`}
+          class={`${open ? "" : "-rotate-90 "}shrink-0 size-3.5 ms-auto transition-transform`}
         />
       </button>
       {open && (

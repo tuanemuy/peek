@@ -8,6 +8,10 @@ import { Sidebar } from "../../components/navigation/sidebar.js";
 import type { ContentType } from "../../core/content-type.js";
 import { getContentType } from "../../core/content-type.js";
 import type { FileTreeNode } from "../../core/file-tree.js";
+import {
+  initialOpenState,
+  isDirectoryOpen,
+} from "../../core/file-tree-open-state.js";
 import { isRelativePathWithinBase } from "../../core/path.js";
 import { encodeUrlPath, rawFileUrl } from "../../core/url.js";
 import type { FileTreeCache } from "../../lib/file-tree-cache.js";
@@ -58,6 +62,7 @@ function renderDirectoryView(params: {
     tree,
     styles,
   } = params;
+  const openState = initialOpenState(tree, currentPath);
   return renderDocument(
     <Document
       title={fileTitle}
@@ -72,7 +77,12 @@ function renderDirectoryView(params: {
         tree,
       }}
     >
-      <Sidebar title={dirTitle} tree={tree} currentPath={currentPath} />
+      <Sidebar
+        title={dirTitle}
+        tree={tree}
+        currentPath={currentPath}
+        isOpen={(path) => isDirectoryOpen(openState, path)}
+      />
       <PageHeader
         id="header-bar"
         breadcrumbs={[{ label: dirTitle, href: "/" }, { label: fileTitle }]}
