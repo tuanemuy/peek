@@ -13,6 +13,7 @@ import {
   isDirectoryOpen,
 } from "../../core/file-tree-open-state.js";
 import { isRelativePathWithinBase, toSlashPath } from "../../core/path.js";
+import type { SlashPath } from "../../core/slash-path.js";
 import { encodeUrlPath, rawFileUrl } from "../../core/url.js";
 import type { FileTreeCache } from "../../lib/file-tree-cache.js";
 import { logger } from "../../lib/logger.js";
@@ -46,7 +47,7 @@ function renderDirectoryView(params: {
   readonly projectId: string;
   readonly dirTitle: string;
   readonly fileTitle: string;
-  readonly currentPath: string;
+  readonly currentPath: SlashPath;
   readonly contentType: ContentType;
   readonly html: string;
   readonly tree: readonly FileTreeNode[];
@@ -224,7 +225,7 @@ export function createDirectoryRoutes(
         projectId,
         dirTitle,
         fileTitle: basename(relativePath),
-        currentPath: relativePath,
+        currentPath: slashPath,
         contentType,
         html: rendered.html,
         tree: treeResult.value,

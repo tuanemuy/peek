@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { slash } from "../../test-utils/slash-path.js";
 
 // Hooks reduced to plain values (no DOM): the returned navigate function is
 // exercised directly, and the listener-registering effect is not run.
@@ -33,7 +34,7 @@ describe("useNavigation", () => {
     const onNavigated = vi.fn();
     const navigate = useNavigation(onNavigated);
 
-    await navigate("a/b/c.md", true);
+    await navigate(slash("a/b/c.md"), true);
 
     expect(onNavigated).toHaveBeenCalledWith("a/b/c.md", "<p>c</p>");
     expect(pushState).toHaveBeenCalledWith(
@@ -50,8 +51,8 @@ describe("useNavigation", () => {
     const onNavigated = vi.fn();
     const navigate = useNavigation(onNavigated);
 
-    await navigate("m/missing.md", true);
-    await navigate("a/b/c.md", true);
+    await navigate(slash("m/missing.md"), true);
+    await navigate(slash("a/b/c.md"), true);
 
     expect(onNavigated.mock.calls).toEqual([["a/b/c.md", "<p>c</p>"]]);
     expect(pushState.mock.calls).toEqual([
@@ -70,8 +71,8 @@ describe("useNavigation", () => {
     const onNavigated = vi.fn();
     const navigate = useNavigation(onNavigated);
 
-    await navigate("a/b/c.md", true);
-    await navigate("z/z.md", true);
+    await navigate(slash("a/b/c.md"), true);
+    await navigate(slash("z/z.md"), true);
 
     expect(onNavigated.mock.calls).toEqual([["z/z.md", "<p>z</p>"]]);
   });

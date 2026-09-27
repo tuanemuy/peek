@@ -1,4 +1,5 @@
 import { type FileTreeNode, findAncestorPaths } from "./file-tree.js";
+import type { SlashPath } from "./slash-path.js";
 
 /**
  * Which directories of the file tree are open.
@@ -24,7 +25,7 @@ export type FileTreeOpenState = {
  */
 export function initialOpenState(
   tree: readonly FileTreeNode[],
-  currentPath: string,
+  currentPath: SlashPath,
 ): FileTreeOpenState {
   return {
     expanded: new Set(),
@@ -50,7 +51,7 @@ export function isDirectoryOpen(
 export function toggleDirectory(
   state: FileTreeOpenState,
   tree: readonly FileTreeNode[],
-  path: string,
+  path: SlashPath,
 ): FileTreeOpenState {
   if (isDirectoryOpen(state, path)) {
     return {
@@ -74,7 +75,7 @@ export function toggleDirectory(
 export function revealFile(
   state: FileTreeOpenState,
   tree: readonly FileTreeNode[],
-  filePath: string,
+  filePath: SlashPath,
 ): FileTreeOpenState {
   return {
     expanded: state.expanded,

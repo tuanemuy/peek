@@ -1,3 +1,4 @@
+import type { SlashPath } from "../../core/slash-path.js";
 import {
   SSE_INITIAL_RETRY_MS,
   SSE_MAX_RETRIES,
@@ -6,7 +7,10 @@ import {
 } from "../../core/sse-constants.js";
 import { logger } from "../../lib/logger.js";
 
-function parseFileChangedData(raw: string): { path: string } | null {
+/**
+ * The server sends the changed file's path as a `SlashPath` (`toSlashPath`).
+ */
+function parseFileChangedData(raw: string): { path: SlashPath } | null {
   let data: unknown;
   try {
     data = JSON.parse(raw);
@@ -16,11 +20,11 @@ function parseFileChangedData(raw: string): { path: string } | null {
   if (!data || typeof data !== "object") return null;
   const obj = data as Record<string, unknown>;
   if (typeof obj.path !== "string") return null;
-  return { path: obj.path };
+  return { path: obj.path as SlashPath };
 }
 
 export type SseCallbacks = {
-  readonly onFileChanged: (changedPath: string | null) => void;
+  readonly onFileChanged: (changedPath: SlashPath | null) => void;
   readonly onTreeChanged?: () => void;
 };
 

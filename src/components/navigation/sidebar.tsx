@@ -1,13 +1,14 @@
 import type { FileTreeNode } from "../../core/file-tree.js";
+import type { SlashPath } from "../../core/slash-path.js";
 import { FileTree } from "./file-tree.js";
 
 type SidebarProps = {
   readonly title: string;
   readonly tree: readonly FileTreeNode[];
-  readonly currentPath: string;
+  readonly currentPath: SlashPath;
   readonly onClose?: () => void;
   readonly isOpen: (path: string) => boolean;
-  readonly onToggle?: (path: string) => void;
+  readonly onToggle?: (path: SlashPath) => void;
   readonly searchQuery?: string;
   readonly onSearchChange?: (query: string) => void;
   readonly isSearching?: boolean;

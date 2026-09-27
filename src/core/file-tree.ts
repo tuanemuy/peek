@@ -20,8 +20,8 @@ function matchesQuery(node: FileTreeNode, normalizedQuery: string): boolean {
  */
 export function findAncestorPaths(
   nodes: readonly FileTreeNode[],
-  targetPath: string,
-): readonly string[] {
+  targetPath: SlashPath,
+): readonly SlashPath[] {
   for (const node of nodes) {
     if (node.type !== "directory") continue;
     if (targetPath.startsWith(`${node.path}/`)) {

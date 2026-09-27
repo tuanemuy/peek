@@ -10,7 +10,9 @@ import {
   isDirectoryOpen,
   revealFile,
 } from "../core/file-tree-open-state.js";
+import type { SlashPath } from "../core/slash-path.js";
 import { assertOk } from "../test-utils/assert-result.js";
+import { slash } from "../test-utils/slash-path.js";
 import { buildFileTree } from "./file-tree.js";
 
 // Windows path conventions on top of the host file system: `sep` is `\` and
@@ -46,7 +48,7 @@ afterAll(() => {
 /** Directory name → open, and the hrefs of the highlighted file links. */
 function renderSidebar(
   tree: readonly FileTreeNode[],
-  currentPath: string,
+  currentPath: SlashPath,
   state: FileTreeOpenState,
 ): { readonly open: Record<string, boolean>; readonly active: string[] } {
   const html = renderToString(
@@ -103,8 +105,8 @@ describe("buildFileTree with Windows paths", () => {
     const tree = assertOk(await buildFileTree(testDir));
     const sidebar = renderSidebar(
       tree,
-      "a/b/c.md",
-      initialOpenState(tree, "a/b/c.md"),
+      slash("a/b/c.md"),
+      initialOpenState(tree, slash("a/b/c.md")),
     );
     expect(sidebar.open).toEqual({ a: true, b: true, sibling: false });
     expect(sidebar.active).toEqual(["/view?path=a/b/c.md"]);
@@ -112,13 +114,15 @@ describe("buildFileTree with Windows paths", () => {
 
   it("highlights the file and opens its ancestors after navigating to a / path", async () => {
     const tree = assertOk(await buildFileTree(testDir));
-    const before = initialOpenState(tree, "root.md");
-    expect(renderSidebar(tree, "root.md", before).open).toEqual({ a: false });
+    const before = initialOpenState(tree, slash("root.md"));
+    expect(renderSidebar(tree, slash("root.md"), before).open).toEqual({
+      a: false,
+    });
 
     const sidebar = renderSidebar(
       tree,
-      "a/b/c.md",
-      revealFile(before, tree, "a/b/c.md"),
+      slash("a/b/c.md"),
+      revealFile(before, tree, slash("a/b/c.md")),
     );
     expect(sidebar.open).toEqual({ a: true, b: true, sibling: false });
     expect(sidebar.active).toEqual(["/view?path=a/b/c.md"]);

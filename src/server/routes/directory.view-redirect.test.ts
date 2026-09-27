@@ -14,19 +14,15 @@ import {
 import { createFileTreeCache } from "../../lib/file-tree-cache.js";
 import { initMarkdown } from "../../lib/markdown.js";
 import { resolveStyles } from "../../lib/styles.js";
+import { osSeparator } from "../../test-utils/os-separator.js";
 import { createDirectoryRoutes } from "./directory.js";
 
-// The OS separator, switched per test to run the Windows branch on any host.
-const os = vi.hoisted(() => ({ sep: "/" }));
-
+// `sep` follows `osSeparator`, to run the Windows branch on any host.
 vi.mock("node:path", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("node:path")>();
-  return {
-    ...actual,
-    get sep() {
-      return os.sep;
-    },
-  };
+  const { withSwitchableSep } = await import(
+    "../../test-utils/os-separator.js"
+  );
+  return withSwitchableSep(await importOriginal<typeof import("node:path")>());
 });
 
 const testDir = join(import.meta.dirname, "__test_fixture_view_redirect__");
@@ -41,7 +37,7 @@ beforeAll(async () => {
 });
 
 afterEach(() => {
-  os.sep = "/";
+  osSeparator.value = undefined;
 });
 
 afterAll(() => {
@@ -60,7 +56,7 @@ async function createTestApp(): Promise<Hono> {
 
 describe("GET /view on Windows", () => {
   beforeEach(() => {
-    os.sep = "\\";
+    osSeparator.value = "\\";
   });
 
   it("redirects a \\-separated path to the /-separated one", async () => {

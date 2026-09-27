@@ -10,24 +10,19 @@ import {
   vi,
 } from "vitest";
 import type { FileChangeCallback, FileWatcherHandle } from "../lib/watcher.js";
+import { osSeparator } from "../test-utils/os-separator.js";
 import type { ServerInstance } from "./index.js";
 import type { SseManager } from "./routes/sse.js";
 
-// The OS separator, switched per test to run the Windows branch on any host.
-const os = vi.hoisted(() => ({ sep: "/" }));
 const watched = vi.hoisted(() => ({
   callback: undefined as FileChangeCallback | undefined,
 }));
 const broadcasts = vi.hoisted((): [event: string, data: string][] => []);
 
+// `sep` follows `osSeparator`, to run the Windows branch on any host.
 vi.mock("node:path", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("node:path")>();
-  return {
-    ...actual,
-    get sep() {
-      return os.sep;
-    },
-  };
+  const { withSwitchableSep } = await import("../test-utils/os-separator.js");
+  return withSwitchableSep(await importOriginal<typeof import("node:path")>());
 });
 
 vi.mock("../lib/watcher.js", async (importOriginal) => {
@@ -82,7 +77,7 @@ beforeAll(async () => {
 });
 
 afterEach(() => {
-  os.sep = "/";
+  osSeparator.value = undefined;
   broadcasts.length = 0;
 });
 
@@ -98,7 +93,7 @@ function notify(fileName: string): void {
 
 describe("directory watcher notifications", () => {
   it("separates the changed file's path with / on Windows", () => {
-    os.sep = "\\";
+    osSeparator.value = "\\";
     notify("docs\\a.md");
     expect(broadcasts).toEqual([
       ["file-changed", JSON.stringify({ path: "docs/a.md" })],
@@ -107,6 +102,7 @@ describe("directory watcher notifications", () => {
   });
 
   it("keeps a backslash as part of a file name on POSIX", () => {
+    osSeparator.value = "/";
     notify("docs/a\\b.md");
     expect(broadcasts).toEqual([
       ["file-changed", JSON.stringify({ path: "docs/a\\b.md" })],

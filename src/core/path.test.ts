@@ -1,18 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { osSeparator } from "../test-utils/os-separator.js";
 import { isRelativePathWithinBase, isWithinBase, toSlashPath } from "./path.js";
 
-// The separator `toSlashPath` reads, switched per test to run the Windows
-// branch on any host.
-const os = vi.hoisted(() => ({ sep: "/" }));
-
+// `sep` follows `osSeparator`, to run the Windows branch on any host.
 vi.mock("node:path", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("node:path")>();
-  return {
-    ...actual,
-    get sep() {
-      return os.sep;
-    },
-  };
+  const { withSwitchableSep } = await import("../test-utils/os-separator.js");
+  return withSwitchableSep(await importOriginal<typeof import("node:path")>());
 });
 
 describe("isWithinBase", () => {
@@ -107,10 +100,14 @@ describe("isRelativePathWithinBase", () => {
 
 describe("toSlashPath", () => {
   afterEach(() => {
-    os.sep = "/";
+    osSeparator.value = undefined;
   });
 
   describe("on POSIX", () => {
+    beforeEach(() => {
+      osSeparator.value = "/";
+    });
+
     it("keeps a /-separated path as is", () => {
       expect(toSlashPath("docs/api/ref.md")).toBe("docs/api/ref.md");
     });
@@ -122,7 +119,7 @@ describe("toSlashPath", () => {
 
   describe("on Windows", () => {
     beforeEach(() => {
-      os.sep = "\\";
+      osSeparator.value = "\\";
     });
 
     it("replaces every backslash with /", () => {

@@ -1,11 +1,12 @@
 import type { FileTreeNode } from "../../core/file-tree.js";
+import type { SlashPath } from "../../core/slash-path.js";
 import { FileTreeItems } from "./file-tree-items.js";
 
 type FileTreeProps = {
   readonly nodes: readonly FileTreeNode[];
-  readonly currentPath?: string;
+  readonly currentPath?: SlashPath;
   readonly isOpen: (path: string) => boolean;
-  readonly onToggle?: (path: string) => void;
+  readonly onToggle?: (path: SlashPath) => void;
 };
 
 export function FileTree({

@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { FileTreeNode } from "../../core/file-tree.js";
 import type { SlashPath } from "../../core/slash-path.js";
+import { slash } from "../../test-utils/slash-path.js";
 import {
   FILE_TREE_STATE_KEY,
   type FileTreeStateStore,
@@ -53,11 +54,11 @@ const { useFileTreeState } = await import("./use-file-tree-state.js");
 type FileTreeState = ReturnType<typeof useFileTreeState>;
 
 function dir(path: string, children: readonly FileTreeNode[]): FileTreeNode {
-  return { name: path, path: path as SlashPath, type: "directory", children };
+  return { name: path, path: slash(path), type: "directory", children };
 }
 
 function file(path: string): FileTreeNode {
-  return { name: path, path: path as SlashPath, type: "file" };
+  return { name: path, path: slash(path), type: "file" };
 }
 
 const tree: readonly FileTreeNode[] = [
@@ -71,7 +72,7 @@ const tree: readonly FileTreeNode[] = [
   file("root.md"),
 ];
 
-function renderOnce(projectId: string, initialPath: string): FileTreeState {
+function renderOnce(projectId: string, initialPath: SlashPath): FileTreeState {
   renderer.index = 0;
   renderer.pendingEffects = [];
   return useFileTreeState(projectId, tree, initialPath);
@@ -83,7 +84,7 @@ function runEffects(): void {
 }
 
 /** Render, run layout effects and re-render until the state settles. */
-function render(projectId: string, initialPath: string): FileTreeState {
+function render(projectId: string, initialPath: SlashPath): FileTreeState {
   renderer.dirty = false;
   let result = renderOnce(projectId, initialPath);
   runEffects();
@@ -141,7 +142,7 @@ afterEach(() => {
 describe("useFileTreeState", () => {
   it("opens only the ancestors of the current file on the first render, ignoring the stored state", () => {
     seedStore({ p: { expanded: ["z"], lastAccess: NOW } });
-    const first = renderOnce("p", "a/b/c.md");
+    const first = renderOnce("p", slash("a/b/c.md"));
 
     expect(first.isOpen("a")).toBe(true);
     expect(first.isOpen("a/b")).toBe(true);
@@ -150,7 +151,7 @@ describe("useFileTreeState", () => {
 
   it("restores the stored expanded directories after mount, keeping the ancestors open", () => {
     seedStore({ p: { expanded: ["z"], lastAccess: NOW - 1 } });
-    const fileTree = render("p", "a/b/c.md");
+    const fileTree = render("p", slash("a/b/c.md"));
 
     expect(fileTree.isOpen("z")).toBe(true);
     expect(fileTree.isOpen("a")).toBe(true);
@@ -164,55 +165,55 @@ describe("useFileTreeState", () => {
       stale: { expanded: ["x"], lastAccess: NOW - TTL_MS - 1 },
       legacy: { collapsed: ["y"], lastAccess: NOW },
     });
-    render("p", "root.md");
+    render("p", slash("root.md"));
 
     expect(readStore()).toEqual({ p: { expanded: ["z"], lastAccess: NOW } });
   });
 
   it("creates an empty entry on mount when nothing is stored", () => {
-    render("p", "a/b/c.md");
+    render("p", slash("a/b/c.md"));
 
     expect(readStore()).toEqual({ p: { expanded: [], lastAccess: NOW } });
   });
 
   it("persists only user-expanded directories when toggling open", () => {
-    const fileTree = render("p", "a/b/c.md");
+    const fileTree = render("p", slash("a/b/c.md"));
     vi.setSystemTime(NOW + 5);
-    fileTree.toggle("a/sibling");
+    fileTree.toggle(slash("a/sibling"));
 
-    expect(render("p", "a/b/c.md").isOpen("a/sibling")).toBe(true);
+    expect(render("p", slash("a/b/c.md")).isOpen("a/sibling")).toBe(true);
     expect(readStore()).toEqual({
       p: { expanded: ["a", "a/sibling"], lastAccess: NOW + 5 },
     });
   });
 
   it("closes a revealed ancestor without persisting it", () => {
-    const fileTree = render("p", "a/b/c.md");
-    fileTree.toggle("a/b");
+    const fileTree = render("p", slash("a/b/c.md"));
+    fileTree.toggle(slash("a/b"));
 
-    expect(render("p", "a/b/c.md").isOpen("a/b")).toBe(false);
+    expect(render("p", slash("a/b/c.md")).isOpen("a/b")).toBe(false);
     expect(readStore().p?.expanded).toEqual([]);
   });
 
   it("removes a closed directory from the store", () => {
     seedStore({ p: { expanded: ["z", "m"], lastAccess: NOW } });
-    render("p", "root.md").toggle("z");
+    render("p", slash("root.md")).toggle(slash("z"));
 
-    expect(render("p", "root.md").isOpen("z")).toBe(false);
+    expect(render("p", slash("root.md")).isOpen("z")).toBe(false);
     expect(readStore().p?.expanded).toEqual(["m"]);
   });
 
   it("keeps entries written by other tabs when toggling", () => {
-    const fileTree = render("p", "root.md");
+    const fileTree = render("p", slash("root.md"));
     seedStore({ ...readStore(), other: { expanded: ["o"], lastAccess: NOW } });
-    fileTree.toggle("z");
+    fileTree.toggle(slash("z"));
 
     expect(readStore().other).toEqual({ expanded: ["o"], lastAccess: NOW });
   });
 
   it("reveals the ancestors of a file without persisting them", () => {
-    render("p", "root.md").reveal("x/y/z.md");
-    const fileTree = render("p", "root.md");
+    render("p", slash("root.md")).reveal(slash("x/y/z.md"));
+    const fileTree = render("p", slash("root.md"));
 
     expect(fileTree.isOpen("x")).toBe(true);
     expect(fileTree.isOpen("x/y")).toBe(true);
@@ -221,16 +222,16 @@ describe("useFileTreeState", () => {
   });
 
   it("keeps a closed ancestor closed across re-renders without a reveal", () => {
-    render("p", "a/b/c.md").toggle("a");
+    render("p", slash("a/b/c.md")).toggle(slash("a"));
 
-    expect(render("p", "a/b/c.md").isOpen("a")).toBe(false);
+    expect(render("p", slash("a/b/c.md")).isOpen("a")).toBe(false);
   });
 
   it("reopens a closed ancestor when the same file is revealed again", () => {
-    render("p", "a/b/c.md").toggle("a");
-    render("p", "a/b/c.md").reveal("a/b/c.md");
+    render("p", slash("a/b/c.md")).toggle(slash("a"));
+    render("p", slash("a/b/c.md")).reveal(slash("a/b/c.md"));
 
-    expect(render("p", "a/b/c.md").isOpen("a")).toBe(true);
+    expect(render("p", slash("a/b/c.md")).isOpen("a")).toBe(true);
   });
 
   it("keeps working in memory when localStorage throws", () => {
@@ -243,9 +244,9 @@ describe("useFileTreeState", () => {
     };
     vi.stubGlobal("localStorage", throwing);
 
-    const fileTree = render("p", "root.md");
+    const fileTree = render("p", slash("root.md"));
     expect(fileTree.isOpen("z")).toBe(false);
-    fileTree.toggle("z");
-    expect(render("p", "root.md").isOpen("z")).toBe(true);
+    fileTree.toggle(slash("z"));
+    expect(render("p", slash("root.md")).isOpen("z")).toBe(true);
   });
 });

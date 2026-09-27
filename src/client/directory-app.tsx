@@ -5,6 +5,7 @@ import { Sidebar } from "../components/navigation/sidebar.js";
 import type { ContentType } from "../core/content-type.js";
 import { getContentType } from "../core/content-type.js";
 import { type FileTreeNode, filterFileTree } from "../core/file-tree.js";
+import type { SlashPath } from "../core/slash-path.js";
 import { encodeUrlPath } from "../core/url.js";
 import { useFileTreeState } from "./hooks/use-file-tree-state.js";
 import { useNavigation } from "./hooks/use-navigation.js";
@@ -16,7 +17,7 @@ import { getFileNameFromPath } from "./lib/path-utils.js";
 type DirectoryAppProps = {
   readonly projectId: string;
   readonly dirTitle: string;
-  readonly currentPath: string;
+  readonly currentPath: SlashPath;
   readonly contentType: ContentType;
   readonly content: string;
   readonly tree: readonly FileTreeNode[];
