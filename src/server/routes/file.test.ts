@@ -10,7 +10,7 @@ const testFile = join(testDir, "test.md");
 
 beforeAll(async () => {
   mkdirSync(testDir, { recursive: true });
-  writeFileSync(testFile, "# Test File\n\nHello world");
+  writeFileSync(testFile, "# Test File\n\nHello world\n\n![logo](./img.png)");
   await initMarkdown();
 });
 
@@ -32,6 +32,16 @@ describe("file routes", () => {
     expect(html).toContain("test.md - peek");
     expect(html).toContain("Test File");
     expect(html).toContain("Hello world");
+  });
+
+  it("GET / rewrites relative images against the file's directory", async () => {
+    const result = await resolveStyles();
+    if (!result.ok) throw new Error("Failed to resolve styles");
+    const app = createFileRoutes(testFile, result.value);
+
+    const res = await app.request("/");
+    const html = await res.text();
+    expect(html).toContain('<img src="/__peek/raw/img.png" alt="logo">');
   });
 });
 

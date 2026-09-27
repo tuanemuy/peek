@@ -6,7 +6,7 @@ const EXTENSION_MAP: ReadonlyMap<string, ContentType> = new Map([
   [".htm", "html"],
 ]);
 
-function getExtension(filePath: string): string {
+export function getExtension(filePath: string): string {
   const lastSep = Math.max(
     filePath.lastIndexOf("/"),
     filePath.lastIndexOf("\\"),

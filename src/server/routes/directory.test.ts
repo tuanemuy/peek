@@ -1,4 +1,4 @@
-import { mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { Hono } from "hono";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -8,12 +8,26 @@ import { resolveStyles } from "../../lib/styles.js";
 import { createDirectoryRoutes } from "./directory.js";
 
 const testDir = join(import.meta.dirname, "__test_fixture_dir__");
+const outsideDir = join(import.meta.dirname, "__test_fixture_dir_outside__");
 
 beforeAll(async () => {
   mkdirSync(testDir, { recursive: true });
   mkdirSync(join(testDir, "docs"), { recursive: true });
   writeFileSync(join(testDir, "README.md"), "# README\n\nHello");
-  writeFileSync(join(testDir, "docs", "guide.md"), "# Guide\n\nContent");
+  writeFileSync(
+    join(testDir, "docs", "guide.md"),
+    "# Guide\n\nContent\n\n![up](../img.png)",
+  );
+  mkdirSync(join(testDir, "raw"), { recursive: true });
+  writeFileSync(join(testDir, "raw", "note.md"), "# Raw Note");
+  mkdirSync(join(testDir, "my docs"), { recursive: true });
+  writeFileSync(join(testDir, "my docs", "a page.html"), "<h1>Nested</h1>");
+  mkdirSync(outsideDir, { recursive: true });
+  writeFileSync(join(outsideDir, "secret.md"), "# Outside secret");
+  writeFileSync(join(outsideDir, "secret.html"), "<h1>Outside</h1>");
+  symlinkSync(join(outsideDir, "secret.md"), join(testDir, "escape.md"));
+  symlinkSync(join(outsideDir, "secret.html"), join(testDir, "escape.html"));
+  symlinkSync(join(testDir, "README.md"), join(testDir, "alias.md"));
   writeFileSync(
     join(testDir, "page.html"),
     "<h1>HTML Page</h1><p>Hello HTML</p>",
@@ -23,6 +37,7 @@ beforeAll(async () => {
 
 afterAll(() => {
   rmSync(testDir, { recursive: true, force: true });
+  rmSync(outsideDir, { recursive: true, force: true });
 });
 
 async function createTestApp(): Promise<Hono> {
@@ -121,7 +136,7 @@ describe("directory routes - catch-all path", () => {
     const html = await res.text();
     expect(html).toContain("<!DOCTYPE html>");
     expect(html).toContain("iframe");
-    expect(html).toContain("/api/raw?path=page.html");
+    expect(html).toContain('src="/__peek/raw/page.html"');
     // Standalone HTML document (no Preact hydration) with inline SSE
     expect(html).toContain("EventSource");
     expect(html).toContain("page.html - peek");
@@ -173,5 +188,75 @@ describe("directory routes - security", () => {
     const app = await createTestApp();
     const res = await app.request("/view?path=docs");
     expect(res.status).toBe(404);
+  });
+});
+
+describe("directory routes - relative assets", () => {
+  it("GET / rewrites images of the first file against its directory", async () => {
+    const app = await createTestApp();
+    const res = await app.request("/");
+    const html = await res.text();
+    expect(html).toContain("Guide");
+    expect(html).toContain('src="/__peek/raw/img.png"');
+  });
+
+  it("GET /view rewrites images against the Markdown file's directory", async () => {
+    const app = await createTestApp();
+    const res = await app.request("/view?path=docs/guide.md");
+    const html = await res.text();
+    expect(html).toContain('src="/__peek/raw/img.png"');
+  });
+
+  it("GET /view points the iframe and the external link at encoded paths", async () => {
+    const app = await createTestApp();
+    const res = await app.request(
+      `/view?path=${encodeURIComponent("my docs/a page.html")}`,
+    );
+    const html = await res.text();
+    expect(html).toContain('src="/__peek/raw/my%20docs/a%20page.html"');
+    expect(html).toContain('href="/my%20docs/a%20page.html"');
+  });
+
+  it("GET /<path>.md rewrites images against the Markdown file's directory", async () => {
+    const app = await createTestApp();
+    const res = await app.request("/docs/guide.md");
+    const html = await res.text();
+    expect(html).toContain('src="/__peek/raw/img.png"');
+  });
+
+  it("GET /<path>.html points the iframe at the encoded raw path", async () => {
+    const app = await createTestApp();
+    const res = await app.request("/my%20docs/a%20page.html");
+    expect(res.status).toBe(200);
+    const html = await res.text();
+    expect(html).toContain('src="/__peek/raw/my%20docs/a%20page.html"');
+  });
+
+  it("GET /raw/note.md opens a file in a directory named raw", async () => {
+    const app = await createTestApp();
+    const res = await app.request("/raw/note.md");
+    expect(res.status).toBe(200);
+    expect(await res.text()).toContain("Raw Note");
+  });
+});
+
+describe("directory routes - symlinks", () => {
+  it.each([
+    "/view?path=escape.md",
+    "/view?path=escape.html",
+    "/escape.md",
+    "/escape.html",
+  ])("GET %s returns 403 for a symlink that leads outside", async (url) => {
+    const app = await createTestApp();
+    const res = await app.request(url);
+    expect(res.status).toBe(403);
+    expect(await res.text()).not.toContain("Outside");
+  });
+
+  it("GET /view renders a symlink that stays inside the directory", async () => {
+    const app = await createTestApp();
+    const res = await app.request("/view?path=alias.md");
+    expect(res.status).toBe(200);
+    expect(await res.text()).toContain("Hello");
   });
 });

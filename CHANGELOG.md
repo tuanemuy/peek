@@ -1,3 +1,15 @@
+# [1.10.0](https://github.com/tuanemuy/peek/compare/v1.9.1...v1.10.0) (2026-09-27)
+
+
+### Bug Fixes
+
+* judge symlinks by real path for pages and file-mode targets ([b0bcdaf](https://github.com/tuanemuy/peek/commit/b0bcdaf162629cbe8ae033d56b0922f58e20aee6))
+
+
+### Features
+
+* serve relative assets for HTML and Markdown previews ([c660bcd](https://github.com/tuanemuy/peek/commit/c660bcd3611aabf4fe074862eb5d962ee8f88df3)), closes [#133](https://github.com/tuanemuy/peek/issues/133)
+
 ## [1.9.1](https://github.com/tuanemuy/peek/compare/v1.9.0...v1.9.1) (2026-08-11)
 
 

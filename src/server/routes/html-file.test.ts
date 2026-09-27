@@ -11,8 +11,15 @@ describe("html file routes", () => {
     expect(html).toContain("<!DOCTYPE html>");
     expect(html).toContain("test.html - peek");
     expect(html).toContain("<iframe");
-    expect(html).toContain("/api/raw");
+    expect(html).toContain('src="/__peek/raw/test.html"');
     expect(html).not.toContain("sandbox=");
+  });
+
+  it("GET / encodes the file name in the iframe src", async () => {
+    const app = createHtmlFileRoutes("/tmp/my page#1.html");
+    const res = await app.request("/");
+    const html = await res.text();
+    expect(html).toContain('src="/__peek/raw/my%20page%231.html"');
   });
 
   it("GET / includes SSE reload script", async () => {
