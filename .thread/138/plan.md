@@ -9,8 +9,8 @@
 - `FileTreeNode.path` と SSE の `file-changed` の `path` は、ディレクトリモードの基準ディレクトリからの `/` 区切りの相対パス
 - `/` 区切りであることは型 `SlashPath`（`src/core/slash-path.ts` のブランド型）で表す。サーバーで `SlashPath` を作るのは `toSlashPath` だけ。次の値を `SlashPath` にし、OS の相対パスや生の文字列をそのまま入れると型エラーになる
   - `FileTreeNode.path`
-  - 表示中のファイルのパス: `DirectoryInitialState.currentPath`、`DirectoryApp` の `currentPath`、`initialOpenState`・`revealFile`・`findAncestorPaths` が受け取るパス
-  - ディレクトリのトグルに渡すパス（`toggleDirectory`）
+  - 表示中のファイルのパス: `DirectoryInitialState.currentPath`、`DirectoryApp` の `currentPath`、`useSseUpdates` の `getCurrentPath` が返すパス、`initialOpenState`・`revealFile`・`findAncestorPaths` が受け取るパス
+  - ディレクトリのパス: トグルに渡すパス（`toggleDirectory`）、開閉を問うパス（`isDirectoryOpen`、`isOpen`）
   - クライアントが受け取る変更通知の `path`
 - クライアントは OS を知らないので、外から来るパスを `SlashPath` として読む境界を 1 か所ずつ持つ。どれも検証はせず、サーバーが `/` 区切りで渡すという契約に基づいて型を付ける
   - `/view` の URL の `?path=` と履歴の `state.path`: `src/client/lib/path-utils.ts` の 1 関数
@@ -39,7 +39,7 @@
 | # | 基準 | 観測方法 |
 | --- | --- | --- |
 | AC1 | Windows 形式（`sep` が `\`、`relative` が `\` 区切り）の入力で `buildFileTree` を作ると、ネストしたディレクトリ・ファイルを含む全ノードの `path` が `/` 区切りになる | 自動テスト（`node:path` をモック） |
-| AC2 | POSIX で `\` を含むファイル名のノードの `path` は `\` を保つ。`FileTreeNode.path`・`DirectoryInitialState.currentPath`・`findAncestorPaths` の引数に生の文字列を入れると型エラーになる | 自動テスト、`@ts-expect-error` による型のテスト（typecheck） |
+| AC2 | POSIX で `\` を含むファイル名のノードの `path` は `\` を保つ。上に挙げた `SlashPath` の値に生の文字列を入れると、サーバー側でもクライアント側でも型エラーになる | 自動テスト、`expectTypeOf` による型のテスト、`pnpm typecheck`（`tsconfig.json` と `tsconfig.client.json` の両方） |
 | AC3 | `toSlashPath` は `sep` が `\` なら `\` を `/` に置き換え、`sep` が `/` なら入力をそのまま返す | 自動テスト（`sep` をモック） |
 | AC4 | watcher の変更通知の `path` は、Windows では `\` を `/` にしたもの、POSIX では `\` を含むファイル名をそのまま保ったもの | 自動テスト（watcher をモックし、`sep` を切り替えて通知される `path` を見る） |
 | AC5 | `findAncestorPaths` は区切り文字を読み取らず、ディレクトリ（`type === "directory"`）のうち「そのパス + `/`」で始まるものを祖先として返す。名前が前方一致するだけのディレクトリ（`docs` と `docs-old`）は祖先にしない。`\` はそのディレクトリの区切りとして扱わない。`.gitignore` でツリーから外れたファイルでも、ツリーにある祖先を返す。`\` 区切りのツリーを前提にした既存テストは削除する | 自動テスト |
@@ -57,7 +57,7 @@ darwin では `toSlashPath` が恒等なので、darwin の観測は変更の前
 
 ## スコープ
 
-- 含む: `toSlashPath` の追加、`buildFileTree` のノードパス、watcher の通知パス、`findAncestorPaths` の単純化、`/view` の正規化リダイレクト、クライアントの `normalizePath` の削除、関連テストとドキュメンテーションコメントの更新
+- 含む: `pnpm typecheck` に `tsconfig.client.json` を加え、そのために既存の `use-sidebar.ts` の型エラーを直す（クライアント側の `SlashPath` をゲートで守るため。#140）、`toSlashPath` の追加、`buildFileTree` のノードパス、watcher の通知パス、`findAncestorPaths` の単純化、`/view` の正規化リダイレクト、クライアントの `normalizePath` の削除、関連テストとドキュメンテーションコメントの更新
 - 含まない
   - クライアント内の SPA 移動で `\` 区切りの `?path=` を受ける場合（本文中のリンク、更新前に積まれた履歴エントリの `state.path` を戻る・進むで辿る場合）。サーバーの `/view` を通らないためそろえない。クライアントは OS を知らず、`?path=` は `/` 区切りとする
   - `getExtension`（`src/core/content-type.ts`）の `\` の扱い。OS の絶対パス（ファイルモードの対象）にも使うため変えない
