@@ -29,3 +29,20 @@ Issue は「`/` と `\` をそろえる処理がツリーを作る境界の 1 �
 - core とクライアントは `/` 区切りだけを受け取り、祖先の判定・強調・通知の突き合わせは文字列の比較で済む
 - クライアント内の SPA 移動（本文中のリンク、戻る・進む）はサーバーの `/view` を通らないので、`\` 区切りの `?path=` はそろわない。クライアントは OS を知らないため、`?path=` は `/` 区切りとする
 - `getExtension` は OS の絶対パスにも使うので `\` の扱いを残す
+
+## ADR-002: `/` 区切りのパスをブランド型 `SlashPath` で表す
+
+### Context
+
+`FileTreeNode.path` が `/` 区切りであることをドキュメンテーションコメントだけで述べると、`buildFileTree` が OS の相対パスをそのままノードに入れても型が通る。
+
+### Decision
+
+`src/core/slash-path.ts` に `SlashPath`（`string` のブランド型）を置き、`FileTreeNode.path` の型にする。サーバーで `SlashPath` を作るのは `toSlashPath` だけ。型はクライアントの tsconfig からも読むので、`node:path` を読む `src/core/path.ts` とは別のファイルに置く。
+
+テストは `node:path` の `sep` を切り替えて `toSlashPath` を通し、置き換えを自前で書かない。
+
+### Consequences
+
+- OS の相対パスをノードに入れると型エラーになる
+- テストのツリーの固定値は `as SlashPath` で作る。クライアントが `/api/tree` の JSON を `FileTreeNode[]` として読むのは従来どおり境界での型付け
