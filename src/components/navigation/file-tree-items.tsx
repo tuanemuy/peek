@@ -37,7 +37,7 @@ function DirectoryItem({
         <FolderIcon class="shrink-0 size-4" />
         <span class="min-w-0 truncate">{node.name}</span>
         <ChevronDownIcon
-          class={`${open ? "" : "-rotate-180 "}shrink-0 size-3.5 ms-auto transition-transform`}
+          class={`${open ? "" : "-rotate-90 "}shrink-0 size-3.5 ms-auto transition-transform`}
         />
       </button>
       {open && (

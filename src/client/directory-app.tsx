@@ -41,7 +41,7 @@ export function DirectoryApp({
   currentPathRef.current = currentPath;
 
   const sidebar = useSidebar();
-  const fileTree = useFileTreeState(projectId, initialPath);
+  const fileTree = useFileTreeState(projectId, currentPath);
 
   const isSearching = searchQuery.trim() !== "";
   const filteredTree = useMemo(
@@ -59,7 +59,6 @@ export function DirectoryApp({
     }
     currentPathRef.current = path;
     setCurrentPath(path);
-    fileTree.reveal(path);
     setContentType(ct);
     setContent(html);
     setHtmlReloadKey(0);

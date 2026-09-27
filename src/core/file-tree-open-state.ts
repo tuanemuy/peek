@@ -17,14 +17,16 @@ export type FileTreeOpenState = {
 
 /**
  * Directories containing `filePath`, outermost first
- * (`"a/b/c.md"` → `["a", "a/b"]`). Splits on `/`, the separator used by
- * `FileTreeNode.path` and `/view?path=`.
+ * (`"a/b/c.md"` → `["a", "a/b"]`).
+ *
+ * Splits on both `/` and `\`: `FileTreeNode.path` comes from `path.relative`,
+ * which uses `\` on Windows. Each ancestor is a prefix of `filePath`, so it
+ * keeps the separators of the tree it came from.
  */
 function getAncestorPaths(filePath: string): readonly string[] {
-  const segments = filePath.split("/");
-  return segments
-    .slice(1)
-    .map((_, index) => segments.slice(0, index + 1).join("/"));
+  return Array.from(filePath.matchAll(/[/\\]/g), (separator) =>
+    filePath.slice(0, separator.index),
+  );
 }
 
 /**

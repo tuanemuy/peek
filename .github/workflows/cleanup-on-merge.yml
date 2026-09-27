@@ -21,10 +21,10 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          # Find and move ADR files from .issue/ and .pr/ to .adr/
+          # Find and move ADR files from .issue/, .pr/ and .thread/ to .adr/
           moved=false
 
-          for dir in .issue .pr; do
+          for dir in .issue .pr .thread; do
             for adr in $(find "$dir" -name 'adr*.md' 2>/dev/null); do
               # Extract issue/pr number from path (e.g., .issue/56/adr.md -> 56)
               number=$(echo "$adr" | cut -d'/' -f2)
@@ -47,7 +47,7 @@ jobs:
             done
           done
 
-          # Remove .issue/ and .pr/ directories
+          # Remove .issue/, .pr/ and .thread/ directories
           removed=false
           if [ -d .issue ]; then
             rm -rf .issue
@@ -57,12 +57,16 @@ jobs:
             rm -rf .pr
             removed=true
           fi
+          if [ -d .thread ]; then
+            rm -rf .thread
+            removed=true
+          fi
 
           # Commit if there were changes
           if [ "$moved" = true ] || [ "$removed" = true ]; then
             git config user.name "github-actions[bot]"
             git config user.email "github-actions[bot]@users.noreply.github.com"
             git add -A
-            git diff --cached --quiet || git commit -m "chore: archive ADRs and clean up .issue/.pr"
+            git diff --cached --quiet || git commit -m "chore: archive ADRs and clean up .issue/.pr/.thread"
             git push
           fi

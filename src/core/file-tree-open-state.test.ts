@@ -29,6 +29,10 @@ describe("initialOpenState", () => {
     expect(initialOpenState("d.md")).toEqual(state([], []));
   });
 
+  it("reveals ancestors of a Windows-style path with its own separators", () => {
+    expect(initialOpenState("a\\b\\c.md")).toEqual(state([], ["a", "a\\b"]));
+  });
+
   it("does not treat a directory prefix of the name as an ancestor", () => {
     const initial = initialOpenState("ab/c.md");
     expect(isDirectoryOpen(initial, "ab")).toBe(true);
@@ -58,6 +62,12 @@ describe("toggleDirectory", () => {
   it("marks the ancestors of an opened directory as user-expanded", () => {
     expect(toggleDirectory(state([], ["a"]), "a/b")).toEqual(
       state(["a", "a/b"], ["a"]),
+    );
+  });
+
+  it("marks the ancestors of an opened Windows-style directory", () => {
+    expect(toggleDirectory(state([], ["a"]), "a\\b")).toEqual(
+      state(["a", "a\\b"], ["a"]),
     );
   });
 
