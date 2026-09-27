@@ -8,13 +8,12 @@ export function isWithinBase(base: string, target: string): boolean {
 }
 
 /**
- * Resolves `relativePath` against `base` without touching the file system.
- * Returns `null` when the result lies outside `base`.
+ * Whether `relativePath`, resolved against `base` without touching the file
+ * system, stays inside `base`.
  */
-export function resolveWithinBase(
+export function isRelativePathWithinBase(
   base: string,
   relativePath: string,
-): string | null {
-  const fullPath = resolve(base, normalize(relativePath));
-  return isWithinBase(base, fullPath) ? fullPath : null;
+): boolean {
+  return isWithinBase(base, resolve(base, normalize(relativePath)));
 }

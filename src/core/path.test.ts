@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { isWithinBase, resolveWithinBase } from "./path.js";
+import { isRelativePathWithinBase, isWithinBase } from "./path.js";
 
 describe("isWithinBase", () => {
   it("returns true for a child path", () => {
@@ -65,24 +65,28 @@ describe("isWithinBase", () => {
   });
 });
 
-describe("resolveWithinBase", () => {
-  it("resolves a relative path against the base", () => {
-    expect(resolveWithinBase("/home/user/docs", "sub/file.md")).toBe(
-      "/home/user/docs/sub/file.md",
+describe("isRelativePathWithinBase", () => {
+  it("returns true for a path inside the base", () => {
+    expect(isRelativePathWithinBase("/home/user/docs", "sub/file.md")).toBe(
+      true,
     );
   });
 
-  it("normalizes . and .. that stay inside the base", () => {
-    expect(resolveWithinBase("/home/user/docs", "./a/../b.md")).toBe(
-      "/home/user/docs/b.md",
+  it("returns true when . and .. stay inside the base", () => {
+    expect(isRelativePathWithinBase("/home/user/docs", "./a/../b.md")).toBe(
+      true,
     );
   });
 
-  it("returns null for a path that climbs above the base", () => {
-    expect(resolveWithinBase("/home/user/docs", "../secret.md")).toBeNull();
+  it("returns false for a path that climbs above the base", () => {
+    expect(isRelativePathWithinBase("/home/user/docs", "../secret.md")).toBe(
+      false,
+    );
   });
 
-  it("returns null for an absolute path outside the base", () => {
-    expect(resolveWithinBase("/home/user/docs", "/etc/passwd")).toBeNull();
+  it("returns false for an absolute path outside the base", () => {
+    expect(isRelativePathWithinBase("/home/user/docs", "/etc/passwd")).toBe(
+      false,
+    );
   });
 });

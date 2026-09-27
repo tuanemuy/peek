@@ -4,7 +4,7 @@ import renderToString from "preact-render-to-string";
 import type { ContentType } from "../../core/content-type.js";
 import { getContentType } from "../../core/content-type.js";
 import { FULLSCREEN_IFRAME_STYLE } from "../../core/iframe-style.js";
-import { resolveWithinBase } from "../../core/path.js";
+import { isRelativePathWithinBase } from "../../core/path.js";
 import { rawFileUrl } from "../../core/url.js";
 import type { FileTreeCache } from "../../lib/file-tree-cache.js";
 import { logger } from "../../lib/logger.js";
@@ -46,7 +46,7 @@ function resolveAndValidatePath(
   if (!query) {
     return { ok: false, status: 400, message: "Missing path parameter" };
   }
-  if (resolveWithinBase(basePath, query) === null) {
+  if (!isRelativePathWithinBase(basePath, query)) {
     return { ok: false, status: 403, message: "Forbidden" };
   }
   const contentType = getContentType(query);

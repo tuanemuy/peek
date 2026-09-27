@@ -8,7 +8,7 @@ import { Sidebar } from "../../components/navigation/sidebar.js";
 import type { ContentType } from "../../core/content-type.js";
 import { getContentType } from "../../core/content-type.js";
 import type { FileTreeNode } from "../../core/file-tree.js";
-import { resolveWithinBase } from "../../core/path.js";
+import { isRelativePathWithinBase } from "../../core/path.js";
 import { encodeUrlPath, rawFileUrl } from "../../core/url.js";
 import type { FileTreeCache } from "../../lib/file-tree-cache.js";
 import { logger } from "../../lib/logger.js";
@@ -179,7 +179,7 @@ export function createDirectoryRoutes(
       return c.redirect("/");
     }
 
-    if (resolveWithinBase(dirPath, relativePath) === null) {
+    if (!isRelativePathWithinBase(dirPath, relativePath)) {
       return c.text("Forbidden", 403);
     }
 
@@ -220,7 +220,7 @@ export function createDirectoryRoutes(
 
   app.get("/:path{.+}", async (c) => {
     const relativePath = c.req.param("path");
-    if (resolveWithinBase(dirPath, relativePath) === null) {
+    if (!isRelativePathWithinBase(dirPath, relativePath)) {
       return c.text("Forbidden", 403);
     }
 

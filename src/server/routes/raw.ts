@@ -1,7 +1,7 @@
 import { readFile } from "node:fs/promises";
 import { Hono } from "hono";
 import { getMimeType, SVG_MIME_TYPE } from "../../core/mime-type.js";
-import { resolveWithinBase } from "../../core/path.js";
+import { isRelativePathWithinBase } from "../../core/path.js";
 import { RAW_FILE_PREFIX } from "../../core/url.js";
 import { logger } from "../../lib/logger.js";
 import { isNotFoundError } from "../../lib/node-error.js";
@@ -19,13 +19,14 @@ type RawFileLookup =
     }
   | { readonly type: "path-error"; readonly error: RealPathWithinBaseError }
   | { readonly type: "not-allowed" }
+  | { readonly type: "not-a-file" }
   | { readonly type: "unreadable"; readonly cause: unknown };
 
 async function lookupRawFile(
   baseDir: string,
   relativePath: string,
 ): Promise<RawFileLookup> {
-  if (resolveWithinBase(baseDir, relativePath) === null) {
+  if (!isRelativePathWithinBase(baseDir, relativePath)) {
     return { type: "path-error", error: { type: "outside-base" } };
   }
   const realPath = await realPathWithinBase(baseDir, relativePath);
@@ -41,8 +42,9 @@ async function lookupRawFile(
   try {
     return { type: "found", body: await readFile(realPath.value), mimeType };
   } catch (e: unknown) {
+    // A directory, or a file removed after the real-path check.
     return isNotFoundError(e)
-      ? { type: "path-error", error: { type: "not-found" } }
+      ? { type: "not-a-file" }
       : { type: "unreadable", cause: e };
   }
 }
@@ -63,7 +65,8 @@ export function createRawRoutes(baseDir: string): Hono {
         return c.text(message, status);
       }
       case "not-allowed":
-        return c.text("Not found", 404);
+      case "not-a-file":
+        return c.text("File not found", 404);
       case "unreadable":
         logger.error("Failed to read file:", file.cause);
         return c.text("Failed to read file", 500);
