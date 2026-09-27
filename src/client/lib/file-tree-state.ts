@@ -3,7 +3,7 @@ export const TTL_DAYS = 30;
 export const TTL_MS = TTL_DAYS * 24 * 60 * 60 * 1000;
 
 export type ProjectEntry = {
-  readonly collapsed: readonly string[];
+  readonly expanded: readonly string[];
   readonly lastAccess: number;
 };
 
@@ -14,9 +14,10 @@ export type FileTreeStateStore = Record<string, ProjectEntry>;
  * the value is absent or not valid JSON (defensive against corruption).
  *
  * Each entry is validated structurally: only entries that are objects with a
- * numeric `lastAccess` and an array `collapsed` are kept. Non-string elements
- * within `collapsed` are dropped. Invalid entries are skipped entirely so that
- * downstream functions (purgeExpired, getCollapsedSet) never see malformed data.
+ * numeric `lastAccess` and an array `expanded` are kept. Non-string elements
+ * within `expanded` are dropped. Invalid entries, including the former
+ * `collapsed` format, are skipped entirely so that downstream functions
+ * (purgeExpired, getExpandedSet) never see malformed data.
  */
 export function parseStore(raw: string | null): FileTreeStateStore {
   if (!raw) return {};
@@ -33,15 +34,15 @@ export function parseStore(raw: string | null): FileTreeStateStore {
       if (!entry || typeof entry !== "object" || Array.isArray(entry)) {
         continue;
       }
-      const { collapsed, lastAccess } = entry as {
-        collapsed?: unknown;
+      const { expanded, lastAccess } = entry as {
+        expanded?: unknown;
         lastAccess?: unknown;
       };
-      if (typeof lastAccess !== "number" || !Array.isArray(collapsed)) {
+      if (typeof lastAccess !== "number" || !Array.isArray(expanded)) {
         continue;
       }
       store[projectId] = {
-        collapsed: collapsed.filter((p): p is string => typeof p === "string"),
+        expanded: expanded.filter((p): p is string => typeof p === "string"),
         lastAccess,
       };
     }
@@ -70,30 +71,30 @@ export function purgeExpired(
 }
 
 /**
- * Build the set of collapsed paths for a project (empty set when absent).
+ * Build the set of expanded paths for a project (empty set when absent).
  */
-export function getCollapsedSet(
+export function getExpandedSet(
   store: FileTreeStateStore,
   projectId: string,
-): Set<string> {
-  return new Set(store[projectId]?.collapsed ?? []);
+): ReadonlySet<string> {
+  return new Set(store[projectId]?.expanded ?? []);
 }
 
 /**
- * Return a new store with the given project's collapsed set and lastAccess
- * updated. The entry is kept even when the collapsed set is empty so that
+ * Return a new store with the given project's expanded set and lastAccess
+ * updated. The entry is kept even when the expanded set is empty so that
  * lastAccess (TTL) tracking is preserved.
  */
-export function writeCollapsed(
+export function writeExpanded(
   store: FileTreeStateStore,
   projectId: string,
-  collapsed: Set<string>,
+  expanded: ReadonlySet<string>,
   now: number,
 ): FileTreeStateStore {
   return {
     ...store,
     [projectId]: {
-      collapsed: Array.from(collapsed),
+      expanded: Array.from(expanded),
       lastAccess: now,
     },
   };
