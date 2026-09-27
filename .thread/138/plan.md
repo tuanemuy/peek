@@ -45,7 +45,7 @@
 | AC5 | `findAncestorPaths` は区切り文字を読み取らず、ディレクトリ（`type === "directory"`）のうち「そのパス + `/`」で始まるものを祖先として返す。名前が前方一致するだけのディレクトリ（`docs` と `docs-old`）は祖先にしない。`\` はそのディレクトリの区切りとして扱わない。`.gitignore` でツリーから外れたファイルでも、ツリーにある祖先を返す。`\` 区切りのツリーを前提にした既存テストは削除する | 自動テスト |
 | AC6 | Windows 形式の入力で作ったツリーを、本文中のリンクと同じ `/` 区切りの `currentPath`（`a/b/c.md`）で描くと、`c.md` の行が表示中として強調され、`a`・`a/b` が開いている。SSR の初期状態と、`root.md` から移動したとき（`revealFile`）の両方 | 自動テスト（AC1 と同じモックで作ったツリーをサイドバーに描く）、Windows 実機の browser |
 | AC7 | `\` を `/` に置き換える処理は `toSlashPath` だけにある。クライアントの `normalizePath`（呼び出し元 `src/client/lib/sse.ts`・`src/client/hooks/use-sse-updates.ts`、テスト `src/client/lib/path-utils.test.ts`）、watcher の `replace(/\\/g, "/")`、`findAncestorPaths` の区切り読み取りは無くなる。テストも置き換えを自前で書かず、`sep` を切り替えて `toSlashPath` を通す | コマンド出力（`src/` 全体の grep。テストを含む） |
-| AC8 | Windows で `/view` は `toSlashPath` で変わるパスを 302 でそろえた URL へリダイレクトし、403 / 404 の判定より先に行う。POSIX では `\` を含むファイル名の `?path=` もリダイレクトせずに描く | 自動テスト（`sep` を切り替える）、Windows 実機の browser（302 の応答と、たどり着いた画面） |
+| AC8 | Windows で `/view` は `toSlashPath` で変わるパスを 302 でそろえた URL へリダイレクトし、403 / 404 の判定より先に行う。POSIX では `\` を含むファイル名の `?path=` もリダイレクトせずに描く | 自動テスト（`sep` を切り替える。POSIX 側は `\` を含むファイル名を描くことまで）、Windows 実機の browser（302 の応答と、たどり着いた画面）、darwin の browser（`\` を含む `?path=` をリダイレクトしないこと。フィクスチャにそのファイルは無いので 404） |
 | AC9 | Windows の `resolve` が `/` 区切りの相対パスを基準ディレクトリの下のパスに解決する（`/view`・`/api/content`・`/__peek/raw/` が `/` 区切りで動く前提） | コマンド出力（`path.win32.resolve` / `isWithinBase` 相当の確認） |
 | AC10 | 本文中の `/view?path=a/b/c.md` のリンクから移動すると、ツリーで `a`・`a/b` が開き、`c.md` の行が表示中として強調される | browser（Windows 実機・darwin） |
 | AC11 | 表示中のファイルを書き換えると、本文がページの再読み込みなしに更新される。別のファイルを書き換えると、変更通知は届いてツリーを再取得し、本文は再取得しない | browser（Windows 実機・darwin）＋ 自動テスト |
