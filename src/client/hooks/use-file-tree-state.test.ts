@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { FileTreeNode } from "../../core/file-tree.js";
+import type { SlashPath } from "../../core/slash-path.js";
 import {
   FILE_TREE_STATE_KEY,
   type FileTreeStateStore,
@@ -52,11 +53,11 @@ const { useFileTreeState } = await import("./use-file-tree-state.js");
 type FileTreeState = ReturnType<typeof useFileTreeState>;
 
 function dir(path: string, children: readonly FileTreeNode[]): FileTreeNode {
-  return { name: path, path, type: "directory", children };
+  return { name: path, path: path as SlashPath, type: "directory", children };
 }
 
 function file(path: string): FileTreeNode {
-  return { name: path, path, type: "file" };
+  return { name: path, path: path as SlashPath, type: "file" };
 }
 
 const tree: readonly FileTreeNode[] = [

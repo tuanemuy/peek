@@ -4,9 +4,10 @@ import {
   filterFileTree,
   findAncestorPaths,
 } from "./file-tree.js";
+import type { SlashPath } from "./slash-path.js";
 
 function file(name: string, path: string): FileTreeNode {
-  return { name, path, type: "file" };
+  return { name, path: path as SlashPath, type: "file" };
 }
 
 function dir(
@@ -14,7 +15,7 @@ function dir(
   path: string,
   children: readonly FileTreeNode[],
 ): FileTreeNode {
-  return { name, path, type: "directory", children };
+  return { name, path: path as SlashPath, type: "directory", children };
 }
 
 // docs/

@@ -7,13 +7,14 @@ import {
   revealFile,
   toggleDirectory,
 } from "./file-tree-open-state.js";
+import type { SlashPath } from "./slash-path.js";
 
 function dir(path: string, children: readonly FileTreeNode[]): FileTreeNode {
-  return { name: path, path, type: "directory", children };
+  return { name: path, path: path as SlashPath, type: "directory", children };
 }
 
 function file(path: string): FileTreeNode {
-  return { name: path, path, type: "file" };
+  return { name: path, path: path as SlashPath, type: "file" };
 }
 
 // a/

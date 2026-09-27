@@ -1,7 +1,8 @@
+import type { SlashPath } from "./slash-path.js";
+
 export type FileTreeNode = {
   readonly name: string;
-  /** `/`-separated path relative to the previewed directory. */
-  readonly path: string;
+  readonly path: SlashPath;
   readonly type: "file" | "directory";
   readonly children?: readonly FileTreeNode[];
 };

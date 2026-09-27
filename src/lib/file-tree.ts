@@ -156,6 +156,7 @@ async function processEntries(
   for (const entry of entries) {
     const fullPath = join(dir, entry.name);
     const relPath = relative(rootDir, fullPath);
+    const path = toSlashPath(relPath);
 
     if (entry.isDirectory()) {
       if (isPathIgnored(relPath, true, rules)) continue;
@@ -165,7 +166,7 @@ async function processEntries(
           children.length > 0
             ? {
                 name: entry.name,
-                path: toSlashPath(relPath),
+                path,
                 type: "directory" as const,
                 children,
               }
@@ -177,7 +178,7 @@ async function processEntries(
 
       fileNodes.push({
         name: entry.name,
-        path: toSlashPath(relPath),
+        path,
         type: "file",
       });
     }

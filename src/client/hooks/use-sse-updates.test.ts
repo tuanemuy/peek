@@ -8,6 +8,7 @@ import {
   vi,
 } from "vitest";
 import type { ContentType } from "../../core/content-type.js";
+import type { SlashPath } from "../../core/slash-path.js";
 import type { SseCallbacks } from "../lib/sse.js";
 
 // Mock useEffect to run callback synchronously (no DOM needed)
@@ -239,7 +240,11 @@ describe("useSseUpdates", () => {
     it("registers onTreeChanged when onTreeUpdate is provided", async () => {
       const onTreeUpdate = vi.fn();
       const treeData = [
-        { name: "readme.md", path: "readme.md", type: "file" as const },
+        {
+          name: "readme.md",
+          path: "readme.md" as SlashPath,
+          type: "file" as const,
+        },
       ];
       vi.mocked(fetchTree).mockResolvedValue(treeData);
 

@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { FileTreeNode } from "../core/file-tree.js";
+import type { SlashPath } from "../core/slash-path.js";
 
 // Hooks reduced to plain values (no DOM): DirectoryApp is called as a function
 // to inspect how it wires the navigation callback to the file tree state.
@@ -43,9 +44,9 @@ const { DirectoryApp } = await import("./directory-app.js");
 const tree: readonly FileTreeNode[] = [
   {
     name: "a",
-    path: "a",
+    path: "a" as SlashPath,
     type: "directory",
-    children: [{ name: "c.md", path: "a/c.md", type: "file" }],
+    children: [{ name: "c.md", path: "a/c.md" as SlashPath, type: "file" }],
   },
 ];
 

@@ -5,16 +5,18 @@ import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { Sidebar } from "../components/navigation/sidebar.js";
 import type { FileTreeNode } from "../core/file-tree.js";
 import {
+  type FileTreeOpenState,
   initialOpenState,
   isDirectoryOpen,
+  revealFile,
 } from "../core/file-tree-open-state.js";
 import { assertOk } from "../test-utils/assert-result.js";
 import { buildFileTree } from "./file-tree.js";
 
 // Windows path conventions on top of the host file system: `sep` is `\` and
 // `path.relative` joins its segments with `\`, as `path.win32` does.
-vi.mock("node:path", async () => {
-  const actual = await vi.importActual<typeof import("node:path")>("node:path");
+vi.mock("node:path", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("node:path")>();
   return {
     ...actual,
     sep: "\\",
@@ -41,6 +43,35 @@ afterAll(() => {
   rmSync(testDir, { recursive: true, force: true });
 });
 
+/** Directory name → open, and the hrefs of the highlighted file links. */
+function renderSidebar(
+  tree: readonly FileTreeNode[],
+  currentPath: string,
+  state: FileTreeOpenState,
+): { readonly open: Record<string, boolean>; readonly active: string[] } {
+  const html = renderToString(
+    <Sidebar
+      title="docs"
+      tree={tree}
+      currentPath={currentPath}
+      isOpen={(path) => isDirectoryOpen(state, path)}
+    />,
+  );
+  const open = Object.fromEntries(
+    [
+      ...html.matchAll(
+        /<button[^>]*aria-expanded="(true|false)"[\s\S]*?<span[^>]*>([^<]*)<\/span>/g,
+      ),
+    ].map(([, expanded, name]) => [name, expanded === "true"]),
+  );
+  const active = [
+    ...html.matchAll(
+      /<a href="(\/view\?path=[^"]*)" class="[^"]*text-sidebar-primary/g,
+    ),
+  ].map(([, href]) => decodeURIComponent(href ?? ""));
+  return { open, active };
+}
+
 describe("buildFileTree with Windows paths", () => {
   it("separates every node path with /", async () => {
     const tree = assertOk(await buildFileTree(testDir));
@@ -65,36 +96,31 @@ describe("buildFileTree with Windows paths", () => {
         ],
       },
       { name: "root.md", path: "root.md", type: "file" },
-    ] satisfies FileTreeNode[]);
+    ]);
   });
 
-  it("highlights the file and opens its ancestors for a / path from a link", async () => {
+  it("highlights the file and opens its ancestors when a / path is rendered first", async () => {
     const tree = assertOk(await buildFileTree(testDir));
-    const currentPath = "a/b/c.md";
-    const openState = initialOpenState(tree, currentPath);
-    const html = renderToString(
-      <Sidebar
-        title="docs"
-        tree={tree}
-        currentPath={currentPath}
-        isOpen={(path) => isDirectoryOpen(openState, path)}
-      />,
+    const sidebar = renderSidebar(
+      tree,
+      "a/b/c.md",
+      initialOpenState(tree, "a/b/c.md"),
     );
+    expect(sidebar.open).toEqual({ a: true, b: true, sibling: false });
+    expect(sidebar.active).toEqual(["/view?path=a/b/c.md"]);
+  });
 
-    const expanded = [
-      ...html.matchAll(
-        /<button[^>]*aria-expanded="(true|false)"[\s\S]*?<span[^>]*>([^<]*)<\/span>/g,
-      ),
-    ].map(([, state, name]) => [name, state === "true"]);
-    expect(Object.fromEntries(expanded)).toEqual({
-      a: true,
-      b: true,
-      sibling: false,
-    });
+  it("highlights the file and opens its ancestors after navigating to a / path", async () => {
+    const tree = assertOk(await buildFileTree(testDir));
+    const before = initialOpenState(tree, "root.md");
+    expect(renderSidebar(tree, "root.md", before).open).toEqual({ a: false });
 
-    const link = html.match(
-      /<a href="\/view\?path=a%2Fb%2Fc\.md" class="([^"]*)"/,
+    const sidebar = renderSidebar(
+      tree,
+      "a/b/c.md",
+      revealFile(before, tree, "a/b/c.md"),
     );
-    expect(link?.[1]).toContain("text-sidebar-primary");
+    expect(sidebar.open).toEqual({ a: true, b: true, sibling: false });
+    expect(sidebar.active).toEqual(["/view?path=a/b/c.md"]);
   });
 });

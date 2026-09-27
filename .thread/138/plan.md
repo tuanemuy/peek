@@ -7,8 +7,9 @@
 ## パスの形
 
 - `FileTreeNode.path` と SSE の `file-changed` の `path` は、ディレクトリモードの基準ディレクトリからの `/` 区切りの相対パス
+- `/` 区切りであることは型 `SlashPath`（`src/core/slash-path.ts` のブランド型）で表す。`FileTreeNode.path` は `SlashPath` で、サーバーで `SlashPath` を作るのは `toSlashPath` だけ。OS の相対パスをそのままノードに入れると型エラーになる
 - OS の区切り（`path.sep`）を `/` に置き換える規則は `src/core/path.ts` の `toSlashPath` 1 関数だけが持つ。POSIX では `\` はファイル名の文字なので置き換えない
-- Issue の完了条件「そろえる処理がツリーを作る境界の 1 か所だけにある」は、規則（置き換えの実装）が 1 か所にあることと読む。規則を適用するのは、OS 形式のパスがサーバーに入る次の 3 か所で、どれも `toSlashPath` を呼ぶだけで自前の置き換えを持たない
+- Issue の完了条件「そろえる処理がツリーを作る境界の 1 か所だけにある」は、規則（置き換えの実装）が 1 か所にあることと読む。Issue の本文どおりツリーだけでそろえると、Windows の `fs.watch` が返す `\` 区切りの通知をそろえる置き換えがどこかに残り、同じ規則が 2 か所になるため。規則を適用するのは、OS 形式のパスがサーバーに入って core・クライアントの比較に届く次の 3 か所で、どれも `toSlashPath` を呼ぶだけで自前の置き換えを持たない
   - `buildFileTree`（`src/lib/file-tree.ts`）: `path.relative` から作るノードの `path`
   - ディレクトリの watcher（`src/server/index.ts`）: `fs.watch` が返すファイル名
   - `/view`（`src/server/routes/directory.tsx`）: `?path=`。以前のツリーのリンク（Windows で `?path=a%5Cb.md`）のブックマークで、強調・祖先の展開・ライブリロードが効くようにする
@@ -19,26 +20,30 @@
 
 - `toSlashPath(path) !== path` なら、`/view?path=<toSlashPath(path)>` へ 302 でリダイレクトする。`path` 以外のクエリは `/view` が読まないので残さない
 - リダイレクトは 403（基準の外）・404（非対応の拡張子・ファイルが無い）の判定より先に行う。判定はリダイレクト先で同じ規則で行われる
-- そろえても変わらないパス（POSIX では常に）はリダイレクトせず、従来どおり描く
+- そろえても変わらないパス（POSIX では常に。`\` を含むファイル名も）はリダイレクトせず、従来どおり描く
+
+## 比較に届かない入口
+
+`/api/content`・`/__peek/raw/`・`/<相対パス>` は `?path=` やパスをファイルシステムの操作にだけ使い、ツリー・通知との比較には渡さない。Windows で `\` 区切りを受けても `resolve` で同じファイルに解決できるので、そろえない。
 
 ## 受け入れ基準
 
 | # | 基準 | 観測方法 |
 | --- | --- | --- |
 | AC1 | Windows 形式（`sep` が `\`、`relative` が `\` 区切り）の入力で `buildFileTree` を作ると、ネストしたディレクトリ・ファイルを含む全ノードの `path` が `/` 区切りになる | 自動テスト（`node:path` をモック） |
-| AC2 | POSIX で `\` を含むファイル名のノードの `path` は `\` を保つ | 自動テスト |
+| AC2 | POSIX で `\` を含むファイル名のノードの `path` は `\` を保つ。`buildFileTree` がノードに OS の相対パスをそのまま入れると型エラーになる | 自動テスト、typecheck |
 | AC3 | `toSlashPath` は `sep` が `\` なら `\` を `/` に置き換え、`sep` が `/` なら入力をそのまま返す | 自動テスト（`sep` をモック） |
-| AC4 | watcher の変更通知の `path` は `toSlashPath` を通したもの | 自動テスト（watcher と `toSlashPath` をモックし、通知される `path` を見る） |
+| AC4 | watcher の変更通知の `path` は、Windows では `\` を `/` にしたもの、POSIX では `\` を含むファイル名をそのまま保ったもの | 自動テスト（watcher をモックし、`sep` を切り替えて通知される `path` を見る） |
 | AC5 | `findAncestorPaths` は区切り文字を読み取らず、ディレクトリ（`type === "directory"`）のうち「そのパス + `/`」で始まるものを祖先として返す。名前が前方一致するだけのディレクトリ（`docs` と `docs-old`）は祖先にしない。`\` はそのディレクトリの区切りとして扱わない。`.gitignore` でツリーから外れたファイルでも、ツリーにある祖先を返す。`\` 区切りのツリーを前提にした既存テストは削除する | 自動テスト |
-| AC6 | Windows 形式の入力で作ったツリーを、本文中のリンクと同じ `/` 区切りの `currentPath`（`a/b/c.md`）で描くと、`c.md` の行が表示中として強調され、`a`・`a/b` が開いている | 自動テスト（AC1 と同じモックで作ったツリーをサイドバーに描く） |
-| AC7 | `/` と `\` をそろえる処理は `toSlashPath` だけにある。クライアントの `normalizePath`（呼び出し元 `src/client/lib/sse.ts`・`src/client/hooks/use-sse-updates.ts`、テスト `src/client/lib/path-utils.test.ts`）、watcher の `replace(/\\/g, "/")`、`findAncestorPaths` の区切り読み取りは無くなる | コマンド出力（`src/` 全体の grep。テストを含む） |
-| AC8 | `/view` は `toSlashPath` で変わるパスを 302 でそろえた URL へリダイレクトし、403 / 404 の判定より先に行う。変わらないパスはリダイレクトしない | 自動テスト（`toSlashPath` をモック） |
+| AC6 | Windows 形式の入力で作ったツリーを、本文中のリンクと同じ `/` 区切りの `currentPath`（`a/b/c.md`）で描くと、`c.md` の行が表示中として強調され、`a`・`a/b` が開いている。SSR の初期状態と、`root.md` から移動したとき（`revealFile`）の両方 | 自動テスト（AC1 と同じモックで作ったツリーをサイドバーに描く）、Windows 実機の browser |
+| AC7 | `\` を `/` に置き換える処理は `toSlashPath` だけにある。クライアントの `normalizePath`（呼び出し元 `src/client/lib/sse.ts`・`src/client/hooks/use-sse-updates.ts`、テスト `src/client/lib/path-utils.test.ts`）、watcher の `replace(/\\/g, "/")`、`findAncestorPaths` の区切り読み取りは無くなる。テストも置き換えを自前で書かず、`sep` を切り替えて `toSlashPath` を通す | コマンド出力（`src/` 全体の grep。テストを含む） |
+| AC8 | Windows で `/view` は `toSlashPath` で変わるパスを 302 でそろえた URL へリダイレクトし、403 / 404 の判定より先に行う。POSIX では `\` を含むファイル名の `?path=` もリダイレクトせずに描く | 自動テスト（`sep` を切り替える）、Windows 実機の browser |
 | AC9 | Windows の `resolve` が `/` 区切りの相対パスを基準ディレクトリの下のパスに解決する（`/view`・`/api/content`・`/__peek/raw/` が `/` 区切りで動く前提） | コマンド出力（`path.win32.resolve` / `isWithinBase` 相当の確認） |
-| AC10 | 本文中の `/view?path=a/b/c.md` のリンクから移動すると、ツリーで `a`・`a/b` が開き、`c.md` の行が表示中として強調される | browser（darwin） |
-| AC11 | 表示中のファイルを書き換えると本文がライブリロードされ、別のファイルの変更では再読込されない | browser（darwin）＋ 既存の自動テスト |
-| AC12 | サイドバーのリンク・`/`（最初のファイル）・`/api/content`・`/__peek/raw/`・`/<相対パス>` がこれまでどおり動く | 既存の自動テスト ＋ browser（darwin） |
+| AC10 | 本文中の `/view?path=a/b/c.md` のリンクから移動すると、ツリーで `a`・`a/b` が開き、`c.md` の行が表示中として強調される | browser（Windows 実機・darwin） |
+| AC11 | 表示中のファイルを書き換えると本文がライブリロードされ、別のファイルの変更では再読込されない | browser（Windows 実機・darwin）＋ 自動テスト |
+| AC12 | サイドバーのリンク・`/`（最初のファイル）・`/api/content`・`/__peek/raw/`・`/<相対パス>` がこれまでどおり動く | 既存の自動テスト ＋ browser（Windows 実機・darwin） |
 
-darwin では `toSlashPath` が恒等なので、AC10〜AC12 は変更の前後で結果が変わらないことの観測。Windows での一致は AC1・AC3・AC4・AC6・AC8・AC9 で確かめる。
+darwin では `toSlashPath` が恒等なので、darwin の観測は変更の前後で結果が変わらないことの確認。Windows での一致は GitHub Actions の `windows-latest` 上で peek を動かし、ブラウザで観測する。同じ手順を変更前（`origin/main`）にも流し、結果の違いを記録する。観測は各ビューポートで行う。
 
 ## スコープ
 

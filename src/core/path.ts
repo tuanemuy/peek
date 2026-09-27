@@ -1,4 +1,5 @@
 import { normalize, resolve, sep } from "node:path";
+import type { SlashPath } from "./slash-path.js";
 
 export function isWithinBase(base: string, target: string): boolean {
   const resolvedBase = resolve(base);
@@ -20,10 +21,9 @@ export function isRelativePathWithinBase(
 
 /**
  * Rewrites a relative path taken from the OS (`path.relative`, `fs.watch`, a
- * URL typed on Windows) into the `/`-separated form that the file tree,
- * change notifications and `/view?path=` share. On POSIX `\` is an ordinary
- * file name character and is kept.
+ * URL typed on Windows) into a `SlashPath`. On POSIX `\` is an ordinary file
+ * name character and is kept.
  */
-export function toSlashPath(osPath: string): string {
-  return osPath.split(sep).join("/");
+export function toSlashPath(osPath: string): SlashPath {
+  return osPath.split(sep).join("/") as SlashPath;
 }
