@@ -56,8 +56,10 @@ describe("initialOpenState", () => {
     expect(initialOpenState(tree, "d.md")).toEqual(state([], []));
   });
 
-  it("reveals nothing for a file that is not in the tree", () => {
-    expect(initialOpenState(tree, "a/missing.md")).toEqual(state([], []));
+  it("reveals the directories of a file excluded from the tree", () => {
+    expect(initialOpenState(tree, "a/b/ignored.md")).toEqual(
+      state([], ["a", "a/b"]),
+    );
   });
 
   it("does not open a directory whose name is a prefix of an ancestor", () => {

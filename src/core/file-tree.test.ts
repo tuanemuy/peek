@@ -146,8 +146,22 @@ describe("findAncestorPaths", () => {
     expect(findAncestorPaths(makeTree(), "docs")).toEqual([]);
   });
 
-  it("returns an empty list for a path that is not in the tree", () => {
-    expect(findAncestorPaths(makeTree(), "docs/missing.md")).toEqual([]);
+  it("returns the directories in the tree for a file excluded from it", () => {
+    expect(findAncestorPaths(makeTree(), "docs/api/ignored.md")).toEqual([
+      "docs",
+      "docs/api",
+    ]);
+  });
+
+  it("stops at the deepest directory in the tree", () => {
+    expect(findAncestorPaths(makeTree(), "docs/ignored/deep.md")).toEqual([
+      "docs",
+    ]);
+    expect(findAncestorPaths(makeTree(), "ignored/deep.md")).toEqual([]);
+  });
+
+  it("does not treat a directory whose name is a prefix as an ancestor", () => {
+    expect(findAncestorPaths(makeTree(), "docs-old/a.md")).toEqual([]);
   });
 
   it("follows Windows-style paths as they appear in the tree", () => {
@@ -157,6 +171,18 @@ describe("findAncestorPaths", () => {
       ]),
     ];
     expect(findAncestorPaths(tree, "docs\\api\\ref.md")).toEqual([
+      "docs",
+      "docs\\api",
+    ]);
+  });
+
+  it("accepts / in a path for a Windows-style tree", () => {
+    const tree = [
+      dir("docs", "docs", [
+        dir("api", "docs\\api", [file("ref.md", "docs\\api\\ref.md")]),
+      ]),
+    ];
+    expect(findAncestorPaths(tree, "docs/api/ref.md")).toEqual([
       "docs",
       "docs\\api",
     ]);

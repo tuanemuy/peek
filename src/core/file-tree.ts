@@ -12,32 +12,31 @@ function matchesQuery(node: FileTreeNode, normalizedQuery: string): boolean {
 }
 
 /**
- * Paths of the directories containing the node at `targetPath`, outermost
- * first. Empty when the node is at the root or not in the tree.
+ * Paths of the directories in the tree that contain `targetPath`, outermost
+ * first. `targetPath` itself need not be in the tree: a file excluded by
+ * `.gitignore` can still be displayed, and its directories are found.
  *
- * Walks the tree instead of splitting `targetPath`, so it does not depend on
- * the platform's path separator (`path.relative` uses `\` on Windows, while
- * `\` is a valid file name character elsewhere).
+ * A directory contains `targetPath` when `targetPath` starts with the
+ * directory's path followed by the separator its children use. The separator
+ * is read from the tree instead of assumed: `path.relative` produces `\` on
+ * Windows, where `/` in a URL-supplied path means the same, while on POSIX `\`
+ * is an ordinary file name character.
  */
 export function findAncestorPaths(
   nodes: readonly FileTreeNode[],
   targetPath: string,
 ): readonly string[] {
-  return findDirectoriesTo(nodes, targetPath) ?? [];
-}
-
-function findDirectoriesTo(
-  nodes: readonly FileTreeNode[],
-  targetPath: string,
-): readonly string[] | undefined {
   for (const node of nodes) {
-    if (node.path === targetPath) return [];
-    if (node.children) {
-      const inner = findDirectoriesTo(node.children, targetPath);
-      if (inner) return [node.path, ...inner];
+    const [firstChild] = node.children ?? [];
+    if (!firstChild) continue;
+    const separator = firstChild.path.charAt(node.path.length);
+    const target =
+      separator === "\\" ? targetPath.replaceAll("/", "\\") : targetPath;
+    if (target.startsWith(`${node.path}${separator}`)) {
+      return [node.path, ...findAncestorPaths(node.children ?? [], target)];
     }
   }
-  return undefined;
+  return [];
 }
 
 /**

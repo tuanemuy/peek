@@ -81,16 +81,19 @@ describe("DirectoryApp file tree wiring", () => {
     onNavigated("a/c.md", "<p>c</p>");
     onNavigated("a/c.md", "<p>c</p>");
 
-    expect(fileTree.reveal).toHaveBeenCalledTimes(2);
-    expect(fileTree.reveal).toHaveBeenNthCalledWith(2, "a/c.md");
+    expect(fileTree.reveal.mock.calls).toEqual([["a/c.md"], ["a/c.md"]]);
   });
 
-  it("does not reveal a navigation to an unsupported file", () => {
-    vi.spyOn(console, "error").mockImplementation(() => {});
+  it("reveals only supported files when an unsupported one is reported", () => {
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
     const onNavigated = renderApp();
 
     onNavigated("a/image.png", "");
+    onNavigated("a/c.md", "<p>c</p>");
 
-    expect(fileTree.reveal).not.toHaveBeenCalled();
+    expect(fileTree.reveal.mock.calls).toEqual([["a/c.md"]]);
+    expect(error).toHaveBeenCalledWith(
+      "Unexpected unsupported file type: a/image.png",
+    );
   });
 });

@@ -43,24 +43,36 @@ describe("useNavigation", () => {
     );
   });
 
-  it("does not report a navigation whose content could not be fetched", async () => {
-    vi.mocked(fetchContent).mockResolvedValue(null);
+  it("reports only the successful navigation when an earlier fetch failed", async () => {
+    vi.mocked(fetchContent)
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce("<p>c</p>");
     const onNavigated = vi.fn();
+    const navigate = useNavigation(onNavigated);
 
-    await useNavigation(onNavigated)("m/missing.md", true);
+    await navigate("m/missing.md", true);
+    await navigate("a/b/c.md", true);
 
-    expect(onNavigated).not.toHaveBeenCalled();
-    expect(pushState).not.toHaveBeenCalled();
+    expect(onNavigated.mock.calls).toEqual([["a/b/c.md", "<p>c</p>"]]);
+    expect(pushState.mock.calls).toEqual([
+      [
+        { path: "a/b/c.md" },
+        "",
+        `/view?path=${encodeURIComponent("a/b/c.md")}`,
+      ],
+    ]);
   });
 
-  it("does not report an aborted navigation", async () => {
-    vi.mocked(fetchContent).mockRejectedValue(
-      new DOMException("aborted", "AbortError"),
-    );
+  it("reports only the successful navigation when an earlier one was aborted", async () => {
+    vi.mocked(fetchContent)
+      .mockRejectedValueOnce(new DOMException("aborted", "AbortError"))
+      .mockResolvedValueOnce("<p>z</p>");
     const onNavigated = vi.fn();
+    const navigate = useNavigation(onNavigated);
 
-    await useNavigation(onNavigated)("a/b/c.md", true);
+    await navigate("a/b/c.md", true);
+    await navigate("z/z.md", true);
 
-    expect(onNavigated).not.toHaveBeenCalled();
+    expect(onNavigated.mock.calls).toEqual([["z/z.md", "<p>z</p>"]]);
   });
 });
