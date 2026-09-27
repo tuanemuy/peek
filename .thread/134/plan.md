@@ -35,8 +35,8 @@
   - `expanded` 配列を持たないエントリ（旧 `collapsed` 形式を含む）は不正として読み捨てる。移行はしない。読み捨てたエントリは次の書き込みで消える
   - `lastAccess` はマウント後の復元とトグルで更新する（閲覧だけの再訪でも TTL が延びる）
   - TTL（`TTL_DAYS` = 30 日）によるパージとプロジェクト識別子による名前空間化は維持する
-- 祖先を開く操作は `useFileTreeState(projectId, currentPath)` が `currentPath` の変化で行う。`currentPath` は移動が成功したときだけ変わる
-- 祖先は `/` と `\` の両方で区切って求める。`FileTreeNode.path` は `path.relative` から作られ、Windows では `\` 区切りになる
+- 祖先を開く操作は、移動が成功するたびに `DirectoryApp` が `useFileTreeState` の `reveal` を呼んで行う。表示中と同じファイルへの移動（検索結果から選び直す等）でも開く
+- 祖先はパス文字列を区切らず、ツリーをたどって求める（`findAncestorPaths`）。Windows の `\` 区切りにも、POSIX で `\` を含むファイル名にも正しく働く。ツリーに無いファイルの祖先は開かない
 - `Sidebar`・`FileTree`・`FileTreeItems`・`DirectoryItem` の `isOpen` は必須にし、`isOpen` が無いときに全展開する既定値を無くす。SSR は表示中のファイルの祖先だけを開く `isOpen` を渡す。`onToggle` は任意のまま（SSR と検索中は渡さない）
 
 ## 受け入れ基準
@@ -57,11 +57,13 @@
 | AC12 | 初回クライアントレンダリングが SSR の DOM と一致する（保存状態の有無によらずハイドレーション時点の開閉は祖先だけ）。保存状態の反映はマウント後に行う。console にエラーが出ない | browser / 自動テスト（SSR マークアップ・フックの初回レンダー） |
 | AC13 | SSE でツリーに初めて現れるパスのディレクトリが加わると、折りたたまれた状態で現れ、既存の開閉状態は変わらない | browser |
 | AC14 | 閉じたディレクトリのシェブロンは右向き（›）、開いたディレクトリは下向き（∨）で、押すと開くことが画面から読める | browser |
-| AC15 | Windows の区切り（`a\b\c.md`）でも祖先が開き、トグルで開いたディレクトリの祖先が保存される | 自動テスト |
+| AC15 | Windows の区切り（`a\b\c.md`）でも祖先が開き、トグルで開いたディレクトリの祖先が保存される。POSIX でルート直下の `a\x.md` を開いても `a` は開かない | 自動テスト |
+| AC16 | 表示中の祖先を閉じた後、検索結果から同じファイルを選び直すと、検索をクリアした後に祖先が開いている | browser / 自動テスト |
 
 ## スコープ
 
-- 対象: `src/client/lib/file-tree-state.ts`、`src/client/hooks/use-file-tree-state.ts`、`src/client/directory-app.tsx`、`src/components/navigation/*`、`src/server/routes/directory.tsx`、開閉状態の純関数（`src/core/file-tree-open-state.ts`）、各テスト
+- 対象: `src/client/lib/file-tree-state.ts`、`src/client/hooks/use-file-tree-state.ts`、`src/client/directory-app.tsx`、`src/components/navigation/*`、`src/server/routes/directory.tsx`、開閉状態の純関数（`src/core/file-tree-open-state.ts`）、祖先を求める純関数（`src/core/file-tree.ts`）、各テスト
+- 対象（作業ログの扱い）: `.github/workflows/cleanup-on-merge.yml` がマージ時に `.thread/` の ADR を `.adr/` へ退避し `.thread/` を消す。この Issue の作業ログ `.thread/134/` を main に残さないため
 - 対象外: 旧 `collapsed` データの移行、`/` のときに選ばれる最初のファイルの選び方、パス表記の正規化（`./a` 等）、`.adr/0089.md` の書き換え（当時の判断記録として残す）、保存状態をサーバーへ渡して SSR に反映すること（保存状態がある再訪ではマウント後に開くディレクトリが増える。旧実装でもマウント後に閉じるディレクトリが出ており同じ性質）
 
 ## 対象ビューポート

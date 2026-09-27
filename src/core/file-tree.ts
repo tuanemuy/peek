@@ -12,6 +12,35 @@ function matchesQuery(node: FileTreeNode, normalizedQuery: string): boolean {
 }
 
 /**
+ * Paths of the directories containing the node at `targetPath`, outermost
+ * first. Empty when the node is at the root or not in the tree.
+ *
+ * Walks the tree instead of splitting `targetPath`, so it does not depend on
+ * the platform's path separator (`path.relative` uses `\` on Windows, while
+ * `\` is a valid file name character elsewhere).
+ */
+export function findAncestorPaths(
+  nodes: readonly FileTreeNode[],
+  targetPath: string,
+): readonly string[] {
+  return findDirectoriesTo(nodes, targetPath) ?? [];
+}
+
+function findDirectoriesTo(
+  nodes: readonly FileTreeNode[],
+  targetPath: string,
+): readonly string[] | undefined {
+  for (const node of nodes) {
+    if (node.path === targetPath) return [];
+    if (node.children) {
+      const inner = findDirectoriesTo(node.children, targetPath);
+      if (inner) return [node.path, ...inner];
+    }
+  }
+  return undefined;
+}
+
+/**
  * Filter a file tree by a search query, keeping ancestors of matched nodes so
  * that the path to each match stays visible.
  *

@@ -1,3 +1,5 @@
+import { type FileTreeNode, findAncestorPaths } from "./file-tree.js";
+
 /**
  * Which directories of the file tree are open.
  *
@@ -16,28 +18,17 @@ export type FileTreeOpenState = {
 };
 
 /**
- * Directories containing `filePath`, outermost first
- * (`"a/b/c.md"` → `["a", "a/b"]`).
- *
- * Splits on both `/` and `\`: `FileTreeNode.path` comes from `path.relative`,
- * which uses `\` on Windows. Each ancestor is a prefix of `filePath`, so it
- * keeps the separators of the tree it came from.
- */
-function getAncestorPaths(filePath: string): readonly string[] {
-  return Array.from(filePath.matchAll(/[/\\]/g), (separator) =>
-    filePath.slice(0, separator.index),
-  );
-}
-
-/**
  * State before any persisted state is known: only the ancestors of the
  * displayed file are open. Shared by SSR and the first client render so that
  * hydration sees identical markup.
  */
-export function initialOpenState(currentPath: string): FileTreeOpenState {
+export function initialOpenState(
+  tree: readonly FileTreeNode[],
+  currentPath: string,
+): FileTreeOpenState {
   return {
     expanded: new Set(),
-    revealed: new Set(getAncestorPaths(currentPath)),
+    revealed: new Set(findAncestorPaths(tree, currentPath)),
   };
 }
 
@@ -58,6 +49,7 @@ export function isDirectoryOpen(
  */
 export function toggleDirectory(
   state: FileTreeOpenState,
+  tree: readonly FileTreeNode[],
   path: string,
 ): FileTreeOpenState {
   if (isDirectoryOpen(state, path)) {
@@ -67,7 +59,11 @@ export function toggleDirectory(
     };
   }
   return {
-    expanded: new Set([...state.expanded, ...getAncestorPaths(path), path]),
+    expanded: new Set([
+      ...state.expanded,
+      ...findAncestorPaths(tree, path),
+      path,
+    ]),
     revealed: state.revealed,
   };
 }
@@ -77,11 +73,15 @@ export function toggleDirectory(
  */
 export function revealFile(
   state: FileTreeOpenState,
+  tree: readonly FileTreeNode[],
   filePath: string,
 ): FileTreeOpenState {
   return {
     expanded: state.expanded,
-    revealed: new Set([...state.revealed, ...getAncestorPaths(filePath)]),
+    revealed: new Set([
+      ...state.revealed,
+      ...findAncestorPaths(tree, filePath),
+    ]),
   };
 }
 

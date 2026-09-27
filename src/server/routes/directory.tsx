@@ -56,7 +56,7 @@ function renderDirectoryView(params: {
     tree,
     styles,
   } = params;
-  const openState = initialOpenState(currentPath);
+  const openState = initialOpenState(tree, currentPath);
   return renderDocument(
     <Document
       title={fileTitle}

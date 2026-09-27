@@ -1,4 +1,5 @@
 import { useCallback, useLayoutEffect, useRef, useState } from "preact/hooks";
+import type { FileTreeNode } from "../../core/file-tree.js";
 import {
   type FileTreeOpenState,
   initialOpenState,
@@ -20,23 +21,26 @@ import {
 export type FileTreeState = {
   readonly isOpen: (path: string) => boolean;
   readonly toggle: (path: string) => void;
+  readonly reveal: (filePath: string) => void;
 };
 
 /**
- * Open state of the file tree for a project. The ancestors of `currentPath`
- * are opened on the first render and again whenever `currentPath` changes.
+ * Open state of the file tree for a project. The ancestors of `initialPath`
+ * are open on the first render; `reveal` opens those of a newly displayed file.
  */
 export function useFileTreeState(
   projectId: string,
-  currentPath: string,
+  tree: readonly FileTreeNode[],
+  initialPath: string,
 ): FileTreeState {
   // Start from the same state as the SSR markup (only the ancestors of the
   // displayed file open). Restoration happens in useLayoutEffect, after mount.
   const [state, setState] = useState<FileTreeOpenState>(() =>
-    initialOpenState(currentPath),
+    initialOpenState(tree, initialPath),
   );
   const initialMount = useRef(true);
-  const revealedPath = useRef(currentPath);
+  const treeRef = useRef(tree);
+  treeRef.current = tree;
 
   // Keep a ref in sync with the latest state (same approach as DirectoryApp's
   // currentPathRef) so that callbacks can compute the next state outside of a
@@ -83,15 +87,9 @@ export function useFileTreeState(
     update({ ...stateRef.current, expanded });
   }, [projectId]);
 
-  useLayoutEffect(() => {
-    if (revealedPath.current === currentPath) return;
-    revealedPath.current = currentPath;
-    update(revealFile(stateRef.current, currentPath));
-  }, [currentPath]);
-
   const toggle = useCallback(
     (path: string) => {
-      const next = toggleDirectory(stateRef.current, path);
+      const next = toggleDirectory(stateRef.current, treeRef.current, path);
       update(next);
       // Re-read the latest store before writing so concurrent updates from
       // other tabs/projects are not clobbered.
@@ -102,10 +100,14 @@ export function useFileTreeState(
     [projectId],
   );
 
+  const reveal = useCallback((filePath: string) => {
+    update(revealFile(stateRef.current, treeRef.current, filePath));
+  }, []);
+
   const isOpen = useCallback(
     (path: string) => isDirectoryOpen(state, path),
     [state],
   );
 
-  return { isOpen, toggle };
+  return { isOpen, toggle, reveal };
 }
