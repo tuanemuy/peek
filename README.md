@@ -56,6 +56,20 @@ peek README.md --no-open
 | `--css` | `-c` | - | Path to a custom CSS file (Markdown only) |
 | `--open` / `--no-open` | - | `true` | Auto-open browser on start |
 
+## Relative assets
+
+Relative paths resolve against the directory of the previewed file:
+
+- **HTML** - Any relative URL, such as `<img src="./img.png">`, `<link href="style.css">`, or `url(fonts/a.woff2)` in a stylesheet
+- **Markdown** - Image paths, such as `![](./img.png)` and reference-style images
+
+peek serves these files from the browsed directory (directory mode) or from the previewed file's directory (file mode), including their subdirectories. When the previewed file is a symlink, its real location is used. peek serves only the following extensions and refuses paths outside that directory, including through symlinks:
+
+- Images: `png`, `jpg`, `jpeg`, `gif`, `webp`, `svg`, `avif`, `ico`, `bmp`
+- Styles and scripts: `css`, `js`, `mjs`
+- Fonts: `woff`, `woff2`, `ttf`, `otf`
+- HTML: `html`, `htm`
+
 ## Custom CSS
 
 Content styles for Markdown files can be customized in three ways (in priority order):

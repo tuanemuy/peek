@@ -5,6 +5,7 @@ import { Sidebar } from "../components/navigation/sidebar.js";
 import type { ContentType } from "../core/content-type.js";
 import { getContentType } from "../core/content-type.js";
 import { type FileTreeNode, filterFileTree } from "../core/file-tree.js";
+import { encodeUrlPath } from "../core/url.js";
 import { useFileTreeState } from "./hooks/use-file-tree-state.js";
 import { useNavigation } from "./hooks/use-navigation.js";
 import { useSearchShortcut } from "./hooks/use-search-shortcut.js";
@@ -95,13 +96,13 @@ export function DirectoryApp({
         breadcrumbs={[{ label: dirTitle, href: "/" }, { label: fileTitle }]}
         showSidebarToggle
         onToggleSidebar={sidebar.toggle}
-        externalLinkHref={`/${currentPath.split("/").map(encodeURIComponent).join("/")}`}
+        externalLinkHref={`/${encodeUrlPath(currentPath)}`}
       />
 
       <ContentView
         contentType={contentType}
         fileTitle={fileTitle}
-        rawUrl={`/api/raw?path=${encodeURIComponent(currentPath)}`}
+        filePath={currentPath}
         htmlContent={content}
         htmlReloadKey={htmlReloadKey}
       />
