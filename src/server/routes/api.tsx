@@ -5,6 +5,7 @@ import type { ContentType } from "../../core/content-type.js";
 import { getContentType } from "../../core/content-type.js";
 import { FULLSCREEN_IFRAME_STYLE } from "../../core/iframe-style.js";
 import { isWithinBase } from "../../core/path.js";
+import { rawFileUrl } from "../../core/url.js";
 import type { FileTreeCache } from "../../lib/file-tree-cache.js";
 import { logger } from "../../lib/logger.js";
 import { renderMarkdown } from "../../lib/markdown.js";
@@ -64,7 +65,10 @@ export function createApiRoutes(config: ApiConfig): Hono {
     if (config.mode === "file") {
       if (fileContentType === "html") {
         return c.html(
-          renderRawHtmlIframe("/api/raw", basename(config.targetPath)),
+          renderRawHtmlIframe(
+            rawFileUrl(basename(config.targetPath)),
+            basename(config.targetPath),
+          ),
         );
       }
       const result = await readTextFile(config.targetPath);
@@ -75,7 +79,9 @@ export function createApiRoutes(config: ApiConfig): Hono {
         logger.error("Failed to read file:", result.error);
         return c.text("Failed to read file", 500);
       }
-      return c.html(await renderMarkdown(result.value));
+      return c.html(
+        await renderMarkdown(result.value, basename(config.targetPath)),
+      );
     }
 
     const resolved = resolveAndValidatePath(
@@ -89,10 +95,7 @@ export function createApiRoutes(config: ApiConfig): Hono {
 
     if (contentType === "html") {
       return c.html(
-        renderRawHtmlIframe(
-          `/api/raw?path=${encodeURIComponent(relativePath)}`,
-          basename(relativePath),
-        ),
+        renderRawHtmlIframe(rawFileUrl(relativePath), basename(relativePath)),
       );
     }
 
@@ -104,49 +107,7 @@ export function createApiRoutes(config: ApiConfig): Hono {
       logger.error("Failed to read file:", result.error);
       return c.text("Failed to read file", 500);
     }
-    return c.html(await renderMarkdown(result.value));
-  });
-
-  app.get("/api/raw", async (c) => {
-    if (config.mode === "file") {
-      if (fileContentType !== "html") {
-        return c.text("Not found", 404);
-      }
-      const result = await readTextFile(config.targetPath);
-      if (!result.ok) {
-        if (result.error.type === "file-not-found") {
-          return c.text("File not found", 404);
-        }
-        logger.error("Failed to read file:", result.error);
-        return c.text("Failed to read file", 500);
-      }
-      // CSP is intentionally omitted: this is a local preview tool serving
-      // the user's own HTML files with full HTML expressiveness.
-      c.header("X-Content-Type-Options", "nosniff");
-      return c.html(result.value);
-    }
-
-    const resolved = resolveAndValidatePath(
-      config.targetPath,
-      c.req.query("path"),
-    );
-    if (!resolved.ok) {
-      return c.text(resolved.message, resolved.status);
-    }
-    if (resolved.value.contentType !== "html") {
-      return c.text("Not found", 404);
-    }
-
-    const result = await readTextFile(resolved.value.fullPath);
-    if (!result.ok) {
-      if (result.error.type === "file-not-found") {
-        return c.text("File not found", 404);
-      }
-      logger.error("Failed to read file:", result.error);
-      return c.text("Failed to read file", 500);
-    }
-    c.header("X-Content-Type-Options", "nosniff");
-    return c.html(result.value);
+    return c.html(await renderMarkdown(result.value, relativePath));
   });
 
   app.get("/api/tree", async (c) => {

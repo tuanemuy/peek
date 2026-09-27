@@ -9,6 +9,7 @@ import type { ContentType } from "../../core/content-type.js";
 import { getContentType } from "../../core/content-type.js";
 import type { FileTreeNode } from "../../core/file-tree.js";
 import { isWithinBase } from "../../core/path.js";
+import { encodeUrlPath, rawFileUrl } from "../../core/url.js";
 import type { FileTreeCache } from "../../lib/file-tree-cache.js";
 import { logger } from "../../lib/logger.js";
 import { renderMarkdown } from "../../lib/markdown.js";
@@ -71,12 +72,12 @@ function renderDirectoryView(params: {
         id="header-bar"
         breadcrumbs={[{ label: dirTitle, href: "/" }, { label: fileTitle }]}
         showSidebarToggle
-        externalLinkHref={`/${currentPath.split("/").map(encodeURIComponent).join("/")}`}
+        externalLinkHref={`/${encodeUrlPath(currentPath)}`}
       />
       <ContentView
         contentType={contentType}
         fileTitle={fileTitle}
-        rawUrl={`/api/raw?path=${encodeURIComponent(currentPath)}`}
+        rawUrl={rawFileUrl(currentPath)}
         htmlContent={html}
       />
     </Document>,
@@ -85,6 +86,7 @@ function renderDirectoryView(params: {
 
 async function renderFileContent(
   fullPath: string,
+  relativePath: string,
   contentType: ContentType,
 ): Promise<
   { ok: true; html: string } | { ok: false; status: 404 | 500; message: string }
@@ -99,7 +101,7 @@ async function renderFileContent(
       logger.error("Failed to access file:", e);
       return { ok: false, status: 500, message: "Internal server error" };
     }
-    // HTML content is served via /api/raw iframe; no rendered HTML needed here
+    // HTML content is served via the /__peek/raw/ iframe; no rendered HTML needed here
     return { ok: true, html: "" };
   }
 
@@ -111,7 +113,7 @@ async function renderFileContent(
     logger.error("Failed to read file:", result.error);
     return { ok: false, status: 500, message: "Internal server error" };
   }
-  return { ok: true, html: await renderMarkdown(result.value) };
+  return { ok: true, html: await renderMarkdown(result.value, relativePath) };
 }
 
 export function createDirectoryRoutes(
@@ -140,7 +142,11 @@ export function createDirectoryRoutes(
       return c.text("Internal server error", 500);
     }
     const fullPath = resolve(dirPath, normalize(firstFile.path));
-    const rendered = await renderFileContent(fullPath, contentType);
+    const rendered = await renderFileContent(
+      fullPath,
+      firstFile.path,
+      contentType,
+    );
     if (!rendered.ok) {
       return c.text(rendered.message, rendered.status);
     }
@@ -176,7 +182,11 @@ export function createDirectoryRoutes(
       return c.text("Not found", 404);
     }
 
-    const rendered = await renderFileContent(fullPath, contentType);
+    const rendered = await renderFileContent(
+      fullPath,
+      relativePath,
+      contentType,
+    );
     if (!rendered.ok) {
       return c.text(rendered.message, rendered.status);
     }
@@ -217,20 +227,23 @@ export function createDirectoryRoutes(
     // HTML files use a standalone document with inline SSE (no Preact hydration)
     // to avoid SSR/hydration mismatch — FileApp only supports Markdown rendering.
     if (contentType === "html") {
-      const rendered = await renderFileContent(fullPath, contentType);
+      const rendered = await renderFileContent(
+        fullPath,
+        relativePath,
+        contentType,
+      );
       if (!rendered.ok) {
         return c.text(rendered.message, rendered.status);
       }
       const fileTitle = basename(relativePath);
-      return c.html(
-        renderHtmlDocument(
-          fileTitle,
-          `/api/raw?path=${encodeURIComponent(relativePath)}`,
-        ),
-      );
+      return c.html(renderHtmlDocument(fileTitle, rawFileUrl(relativePath)));
     }
 
-    const rendered = await renderFileContent(fullPath, contentType);
+    const rendered = await renderFileContent(
+      fullPath,
+      relativePath,
+      contentType,
+    );
     if (!rendered.ok) {
       return c.text(rendered.message, rendered.status);
     }
@@ -246,7 +259,7 @@ export function createDirectoryRoutes(
           <ContentView
             contentType={contentType}
             fileTitle={fileTitle}
-            rawUrl={`/api/raw?path=${encodeURIComponent(relativePath)}`}
+            rawUrl={rawFileUrl(relativePath)}
             htmlContent={rendered.html}
             markdownClass="px-2 sm:px-5 py-5 sm:py-15"
           />

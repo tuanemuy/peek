@@ -19,8 +19,8 @@ export function createFileRoutes(
       logger.error("Failed to read file:", result.error);
       return c.text("Failed to read file", 500);
     }
-    const html = await renderMarkdown(result.value);
     const title = basename(filePath);
+    const html = await renderMarkdown(result.value, title);
     return c.html(
       renderDocument(
         <Document

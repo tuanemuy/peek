@@ -13,7 +13,14 @@ beforeAll(async () => {
   mkdirSync(testDir, { recursive: true });
   mkdirSync(join(testDir, "docs"), { recursive: true });
   writeFileSync(join(testDir, "README.md"), "# README\n\nHello");
-  writeFileSync(join(testDir, "docs", "guide.md"), "# Guide\n\nContent");
+  writeFileSync(
+    join(testDir, "docs", "guide.md"),
+    "# Guide\n\nContent\n\n![up](../img.png)",
+  );
+  mkdirSync(join(testDir, "raw"), { recursive: true });
+  writeFileSync(join(testDir, "raw", "note.md"), "# Raw Note");
+  mkdirSync(join(testDir, "my docs"), { recursive: true });
+  writeFileSync(join(testDir, "my docs", "a page.html"), "<h1>Nested</h1>");
   writeFileSync(
     join(testDir, "page.html"),
     "<h1>HTML Page</h1><p>Hello HTML</p>",
@@ -121,7 +128,7 @@ describe("directory routes - catch-all path", () => {
     const html = await res.text();
     expect(html).toContain("<!DOCTYPE html>");
     expect(html).toContain("iframe");
-    expect(html).toContain("/api/raw?path=page.html");
+    expect(html).toContain('src="/__peek/raw/page.html"');
     // Standalone HTML document (no Preact hydration) with inline SSE
     expect(html).toContain("EventSource");
     expect(html).toContain("page.html - peek");
@@ -173,5 +180,54 @@ describe("directory routes - security", () => {
     const app = await createTestApp();
     const res = await app.request("/view?path=docs");
     expect(res.status).toBe(404);
+  });
+});
+
+describe("directory routes - relative assets", () => {
+  it("GET / rewrites images of the first file against its directory", async () => {
+    const app = await createTestApp();
+    const res = await app.request("/");
+    const html = await res.text();
+    expect(html).toContain("Guide");
+    expect(html).toContain('src="/__peek/raw/img.png"');
+  });
+
+  it("GET /view rewrites images against the Markdown file's directory", async () => {
+    const app = await createTestApp();
+    const res = await app.request("/view?path=docs/guide.md");
+    const html = await res.text();
+    expect(html).toContain('src="/__peek/raw/img.png"');
+  });
+
+  it("GET /view points the iframe and the external link at encoded paths", async () => {
+    const app = await createTestApp();
+    const res = await app.request(
+      `/view?path=${encodeURIComponent("my docs/a page.html")}`,
+    );
+    const html = await res.text();
+    expect(html).toContain('src="/__peek/raw/my%20docs/a%20page.html"');
+    expect(html).toContain('href="/my%20docs/a%20page.html"');
+  });
+
+  it("GET /<path>.md rewrites images against the Markdown file's directory", async () => {
+    const app = await createTestApp();
+    const res = await app.request("/docs/guide.md");
+    const html = await res.text();
+    expect(html).toContain('src="/__peek/raw/img.png"');
+  });
+
+  it("GET /<path>.html points the iframe at the encoded raw path", async () => {
+    const app = await createTestApp();
+    const res = await app.request("/my%20docs/a%20page.html");
+    expect(res.status).toBe(200);
+    const html = await res.text();
+    expect(html).toContain('src="/__peek/raw/my%20docs/a%20page.html"');
+  });
+
+  it("GET /raw/note.md opens a file in a directory named raw", async () => {
+    const app = await createTestApp();
+    const res = await app.request("/raw/note.md");
+    expect(res.status).toBe(200);
+    expect(await res.text()).toContain("Raw Note");
   });
 });

@@ -1,3 +1,4 @@
+import { dirname } from "node:path";
 import { serve } from "@hono/node-server";
 import { Hono } from "hono";
 import type { FileTreeCache } from "../lib/file-tree-cache.js";
@@ -13,6 +14,7 @@ import { createApiRoutes } from "./routes/api.js";
 import { createDirectoryRoutes } from "./routes/directory.js";
 import { createFileRoutes } from "./routes/file.js";
 import { createHtmlFileRoutes } from "./routes/html-file.js";
+import { createRawRoutes } from "./routes/raw.js";
 import type { SseManager } from "./routes/sse.js";
 import { createSseManager } from "./routes/sse.js";
 
@@ -102,6 +104,14 @@ function createApp(ctx: AppContext, sse: SseManager): Hono {
     });
   });
   app.route("/", sse.app);
+
+  // Registered before the directory routes, whose `/:path{.+}` matches too.
+  app.route(
+    "/",
+    createRawRoutes(
+      ctx.mode === "file" ? dirname(ctx.targetPath) : ctx.targetPath,
+    ),
+  );
 
   if (ctx.mode === "file") {
     const apiRoutes = createApiRoutes({

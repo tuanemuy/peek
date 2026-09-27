@@ -10,11 +10,16 @@ import { createApiRoutes } from "./api.js";
 const testDir = join(import.meta.dirname, "__test_fixture_api__");
 const testFile = join(testDir, "readme.md");
 const testHtmlFile = join(testDir, "page.html");
+const testImageMdFile = join(testDir, "image.md");
 
 beforeAll(async () => {
   mkdirSync(testDir, { recursive: true });
   writeFileSync(testFile, "# API Test\n\nContent here");
   writeFileSync(testHtmlFile, "<h1>HTML Test</h1><p>Hello</p>");
+  writeFileSync(testImageMdFile, "![logo](./img.png)");
+  mkdirSync(join(testDir, "my docs"), { recursive: true });
+  writeFileSync(join(testDir, "my docs", "guide.md"), "![up](../img.png)");
+  writeFileSync(join(testDir, "my docs", "a page.html"), "<h1>Nested</h1>");
   await initMarkdown();
 });
 
@@ -29,6 +34,13 @@ describe("api routes - file mode", () => {
     expect(res.status).toBe(200);
     const html = await res.text();
     expect(html).toContain("API Test");
+  });
+
+  it("GET /api/content rewrites relative images against the file's directory", async () => {
+    const app = createApiRoutes({ mode: "file", targetPath: testImageMdFile });
+    const res = await app.request("/api/content");
+    expect(res.status).toBe(200);
+    expect(await res.text()).toContain('src="/__peek/raw/img.png"');
   });
 
   it("GET /api/tree returns empty array in file mode", async () => {
@@ -52,6 +64,20 @@ describe("api routes - directory mode", () => {
     expect(res.status).toBe(200);
     const html = await res.text();
     expect(html).toContain("API Test");
+  });
+
+  it("GET /api/content rewrites relative images against the Markdown file's directory", async () => {
+    const treeCache = createFileTreeCache(testDir);
+    const app = createApiRoutes({
+      mode: "directory",
+      targetPath: testDir,
+      treeCache,
+    });
+    const res = await app.request(
+      `/api/content?path=${encodeURIComponent("my docs/guide.md")}`,
+    );
+    expect(res.status).toBe(200);
+    expect(await res.text()).toContain('src="/__peek/raw/img.png"');
   });
 
   it("GET /api/content without path returns 400", async () => {
@@ -109,41 +135,8 @@ describe("api routes - HTML file mode", () => {
     expect(res.status).toBe(200);
     const html = await res.text();
     expect(html).toContain("<iframe");
-    expect(html).toContain("/api/raw");
+    expect(html).toContain('src="/__peek/raw/page.html"');
     expect(html).toContain('title="page.html"');
-  });
-
-  it("GET /api/raw returns raw HTML content", async () => {
-    const app = createApiRoutes({ mode: "file", targetPath: testHtmlFile });
-    const res = await app.request("/api/raw");
-    expect(res.status).toBe(200);
-    const html = await res.text();
-    expect(html).toContain("<h1>HTML Test</h1>");
-    expect(html).toContain("Hello");
-  });
-
-  it("GET /api/raw returns security headers for HTML file", async () => {
-    const app = createApiRoutes({ mode: "file", targetPath: testHtmlFile });
-    const res = await app.request("/api/raw");
-    expect(res.headers.get("X-Content-Type-Options")).toBe("nosniff");
-    expect(res.headers.get("Content-Security-Policy")).toBeNull();
-  });
-
-  it("GET /api/raw returns 404 for markdown file", async () => {
-    const app = createApiRoutes({ mode: "file", targetPath: testFile });
-    const res = await app.request("/api/raw");
-    expect(res.status).toBe(404);
-  });
-
-  it("GET /api/raw returns 404 for non-existent HTML file", async () => {
-    const app = createApiRoutes({
-      mode: "file",
-      targetPath: join(testDir, "nonexistent.html"),
-    });
-    const res = await app.request("/api/raw");
-    expect(res.status).toBe(404);
-    const text = await res.text();
-    expect(text).toBe("File not found");
   });
 });
 
@@ -159,24 +152,27 @@ describe("api routes - HTML directory mode", () => {
     expect(res.status).toBe(200);
     const html = await res.text();
     expect(html).toContain("<iframe");
-    expect(html).toContain("/api/raw?path=page.html");
+    expect(html).toContain('src="/__peek/raw/page.html"');
     expect(html).toContain('title="page.html"');
   });
 
-  it("GET /api/raw?path=page.html returns raw HTML content", async () => {
+  it("GET /api/content encodes each segment of a nested HTML path", async () => {
     const treeCache = createFileTreeCache(testDir);
     const app = createApiRoutes({
       mode: "directory",
       targetPath: testDir,
       treeCache,
     });
-    const res = await app.request("/api/raw?path=page.html");
+    const res = await app.request(
+      `/api/content?path=${encodeURIComponent("my docs/a page.html")}`,
+    );
     expect(res.status).toBe(200);
-    const html = await res.text();
-    expect(html).toContain("<h1>HTML Test</h1>");
+    expect(await res.text()).toContain(
+      'src="/__peek/raw/my%20docs/a%20page.html"',
+    );
   });
 
-  it("GET /api/raw?path=page.html returns security headers", async () => {
+  it("GET /api/raw returns 404", async () => {
     const treeCache = createFileTreeCache(testDir);
     const app = createApiRoutes({
       mode: "directory",
@@ -184,67 +180,7 @@ describe("api routes - HTML directory mode", () => {
       treeCache,
     });
     const res = await app.request("/api/raw?path=page.html");
-    expect(res.headers.get("X-Content-Type-Options")).toBe("nosniff");
-    expect(res.headers.get("Content-Security-Policy")).toBeNull();
-  });
-
-  it("GET /api/raw without path returns 400", async () => {
-    const treeCache = createFileTreeCache(testDir);
-    const app = createApiRoutes({
-      mode: "directory",
-      targetPath: testDir,
-      treeCache,
-    });
-    const res = await app.request("/api/raw");
-    expect(res.status).toBe(400);
-  });
-
-  it("GET /api/raw with path traversal returns 403", async () => {
-    const treeCache = createFileTreeCache(testDir);
-    const app = createApiRoutes({
-      mode: "directory",
-      targetPath: testDir,
-      treeCache,
-    });
-    const res = await app.request("/api/raw?path=../../../etc/passwd");
-    expect(res.status).toBe(403);
-  });
-
-  it("GET /api/raw with non-HTML path returns 404", async () => {
-    const treeCache = createFileTreeCache(testDir);
-    const app = createApiRoutes({
-      mode: "directory",
-      targetPath: testDir,
-      treeCache,
-    });
-    const res = await app.request("/api/raw?path=readme.md");
     expect(res.status).toBe(404);
-  });
-
-  it("GET /api/raw with nonexistent HTML file returns 404", async () => {
-    const treeCache = createFileTreeCache(testDir);
-    const app = createApiRoutes({
-      mode: "directory",
-      targetPath: testDir,
-      treeCache,
-    });
-    const res = await app.request("/api/raw?path=nonexistent.html");
-    expect(res.status).toBe(404);
-    const text = await res.text();
-    expect(text).toBe("File not found");
-  });
-
-  it("GET /api/raw with unsupported extension returns 415", async () => {
-    const treeCache = createFileTreeCache(testDir);
-    const app = createApiRoutes({
-      mode: "directory",
-      targetPath: testDir,
-      treeCache,
-    });
-    const res = await app.request("/api/raw?path=readme.txt");
-    expect(res.status).toBe(415);
-    const text = await res.text();
-    expect(text).toBe("Unsupported file type");
   });
 });
 
