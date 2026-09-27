@@ -1,5 +1,5 @@
 import { EventEmitter } from "node:events";
-import { mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
 import { join } from "node:path";
@@ -49,6 +49,19 @@ beforeAll(() => {
   writeFileSync(join(testDir, "readme.md"), "![logo](./img.png)");
   mkdirSync(join(testDir, "raw"), { recursive: true });
   writeFileSync(join(testDir, "raw", "note.md"), "# Raw Note");
+  mkdirSync(join(testDir, "real"), { recursive: true });
+  writeFileSync(join(testDir, "real", "page.html"), '<img src="./pic.png">');
+  writeFileSync(join(testDir, "real", "pic.png"), PNG_BYTES);
+  writeFileSync(join(testDir, "real", "notes.md"), "![pic](./pic.png)");
+  mkdirSync(join(testDir, "links"), { recursive: true });
+  symlinkSync(
+    join(testDir, "real", "page.html"),
+    join(testDir, "links", "link.html"),
+  );
+  symlinkSync(
+    join(testDir, "real", "notes.md"),
+    join(testDir, "links", "link.md"),
+  );
 });
 
 afterAll(() => {
@@ -229,6 +242,35 @@ describe("startServer / relative assets", () => {
     const res = await fetch(`http://localhost:${port}/__peek/raw/img.png`);
     expect(res.status).toBe(200);
     expect(res.headers.get("Content-Type")).toBe("image/png");
+  });
+
+  it("serves a symlinked HTML file and its assets from the real location", async () => {
+    const port = await getFreePort();
+    server = await startServer({
+      ...baseConfig,
+      targetPath: join(testDir, "links", "link.html"),
+      port,
+    });
+
+    const page = await fetch(`http://localhost:${port}/`);
+    expect(await page.text()).toContain('src="/__peek/raw/page.html"');
+    const html = await fetch(`http://localhost:${port}/__peek/raw/page.html`);
+    expect(html.status).toBe(200);
+    const pic = await fetch(`http://localhost:${port}/__peek/raw/pic.png`);
+    expect(pic.status).toBe(200);
+  });
+
+  it("serves the images of a symlinked Markdown file from the real location", async () => {
+    const port = await startWithStyles({
+      mode: "file",
+      contentType: "markdown",
+      targetPath: join(testDir, "links", "link.md"),
+    });
+
+    const page = await fetch(`http://localhost:${port}/`);
+    expect(await page.text()).toContain('src="/__peek/raw/pic.png"');
+    const pic = await fetch(`http://localhost:${port}/__peek/raw/pic.png`);
+    expect(pic.status).toBe(200);
   });
 
   it("opens /raw/<file> as a page in directory mode", async () => {

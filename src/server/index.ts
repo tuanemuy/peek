@@ -1,3 +1,4 @@
+import { realpath } from "node:fs/promises";
 import { dirname } from "node:path";
 import { serve } from "@hono/node-server";
 import { Hono } from "hono";
@@ -165,25 +166,31 @@ export async function startServer(
   options?: StartServerOptions,
 ): Promise<ServerInstance> {
   const shutdownTimeoutMs = options?.shutdownTimeoutMs ?? SHUTDOWN_TIMEOUT_MS;
+  // A previewed file that is a symlink is served from its real location, so
+  // that its relative paths resolve against the directory it was written in.
+  const targetPath =
+    config.mode === "file"
+      ? await realpath(config.targetPath)
+      : config.targetPath;
   const sse = createSseManager();
 
   const ctx: AppContext =
     config.mode === "directory"
       ? {
           mode: "directory",
-          targetPath: config.targetPath,
+          targetPath,
           styles: config.styles,
-          treeCache: createFileTreeCache(config.targetPath),
+          treeCache: createFileTreeCache(targetPath),
         }
       : config.contentType === "html"
         ? {
             mode: "file",
-            targetPath: config.targetPath,
+            targetPath,
             contentType: "html",
           }
         : {
             mode: "file",
-            targetPath: config.targetPath,
+            targetPath,
             contentType: config.contentType,
             styles: config.styles,
           };

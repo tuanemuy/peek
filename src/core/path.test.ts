@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { isWithinBase } from "./path.js";
+import { isWithinBase, resolveWithinBase } from "./path.js";
 
 describe("isWithinBase", () => {
   it("returns true for a child path", () => {
@@ -62,5 +62,27 @@ describe("isWithinBase", () => {
 
   it("returns true for path within root", () => {
     expect(isWithinBase("/", "/etc/passwd")).toBe(true);
+  });
+});
+
+describe("resolveWithinBase", () => {
+  it("resolves a relative path against the base", () => {
+    expect(resolveWithinBase("/home/user/docs", "sub/file.md")).toBe(
+      "/home/user/docs/sub/file.md",
+    );
+  });
+
+  it("normalizes . and .. that stay inside the base", () => {
+    expect(resolveWithinBase("/home/user/docs", "./a/../b.md")).toBe(
+      "/home/user/docs/b.md",
+    );
+  });
+
+  it("returns null for a path that climbs above the base", () => {
+    expect(resolveWithinBase("/home/user/docs", "../secret.md")).toBeNull();
+  });
+
+  it("returns null for an absolute path outside the base", () => {
+    expect(resolveWithinBase("/home/user/docs", "/etc/passwd")).toBeNull();
   });
 });

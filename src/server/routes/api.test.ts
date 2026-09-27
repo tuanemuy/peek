@@ -1,4 +1,4 @@
-import { mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { typedError } from "../../core/error.js";
@@ -11,6 +11,7 @@ const testDir = join(import.meta.dirname, "__test_fixture_api__");
 const testFile = join(testDir, "readme.md");
 const testHtmlFile = join(testDir, "page.html");
 const testImageMdFile = join(testDir, "image.md");
+const outsideDir = join(import.meta.dirname, "__test_fixture_api_outside__");
 
 beforeAll(async () => {
   mkdirSync(testDir, { recursive: true });
@@ -20,11 +21,15 @@ beforeAll(async () => {
   mkdirSync(join(testDir, "my docs"), { recursive: true });
   writeFileSync(join(testDir, "my docs", "guide.md"), "![up](../img.png)");
   writeFileSync(join(testDir, "my docs", "a page.html"), "<h1>Nested</h1>");
+  mkdirSync(outsideDir, { recursive: true });
+  writeFileSync(join(outsideDir, "secret.md"), "# Outside secret");
+  symlinkSync(join(outsideDir, "secret.md"), join(testDir, "escape.md"));
   await initMarkdown();
 });
 
 afterAll(() => {
   rmSync(testDir, { recursive: true, force: true });
+  rmSync(outsideDir, { recursive: true, force: true });
 });
 
 describe("api routes - file mode", () => {
@@ -231,6 +236,18 @@ describe("api routes - directory mode edge cases", () => {
     expect(res.status).toBe(415);
     const text = await res.text();
     expect(text).toBe("Unsupported file type");
+  });
+
+  it("GET /api/content returns 403 for a symlink that leads outside", async () => {
+    const treeCache = createFileTreeCache(testDir);
+    const app = createApiRoutes({
+      mode: "directory",
+      targetPath: testDir,
+      treeCache,
+    });
+    const res = await app.request("/api/content?path=escape.md");
+    expect(res.status).toBe(403);
+    expect(await res.text()).not.toContain("Outside secret");
   });
 
   it("GET /api/content with ../etc/passwd path traversal returns 403", async () => {

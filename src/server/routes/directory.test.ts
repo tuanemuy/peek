@@ -1,4 +1,4 @@
-import { mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { Hono } from "hono";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -8,6 +8,7 @@ import { resolveStyles } from "../../lib/styles.js";
 import { createDirectoryRoutes } from "./directory.js";
 
 const testDir = join(import.meta.dirname, "__test_fixture_dir__");
+const outsideDir = join(import.meta.dirname, "__test_fixture_dir_outside__");
 
 beforeAll(async () => {
   mkdirSync(testDir, { recursive: true });
@@ -21,6 +22,12 @@ beforeAll(async () => {
   writeFileSync(join(testDir, "raw", "note.md"), "# Raw Note");
   mkdirSync(join(testDir, "my docs"), { recursive: true });
   writeFileSync(join(testDir, "my docs", "a page.html"), "<h1>Nested</h1>");
+  mkdirSync(outsideDir, { recursive: true });
+  writeFileSync(join(outsideDir, "secret.md"), "# Outside secret");
+  writeFileSync(join(outsideDir, "secret.html"), "<h1>Outside</h1>");
+  symlinkSync(join(outsideDir, "secret.md"), join(testDir, "escape.md"));
+  symlinkSync(join(outsideDir, "secret.html"), join(testDir, "escape.html"));
+  symlinkSync(join(testDir, "README.md"), join(testDir, "alias.md"));
   writeFileSync(
     join(testDir, "page.html"),
     "<h1>HTML Page</h1><p>Hello HTML</p>",
@@ -30,6 +37,7 @@ beforeAll(async () => {
 
 afterAll(() => {
   rmSync(testDir, { recursive: true, force: true });
+  rmSync(outsideDir, { recursive: true, force: true });
 });
 
 async function createTestApp(): Promise<Hono> {
@@ -229,5 +237,26 @@ describe("directory routes - relative assets", () => {
     const res = await app.request("/raw/note.md");
     expect(res.status).toBe(200);
     expect(await res.text()).toContain("Raw Note");
+  });
+});
+
+describe("directory routes - symlinks", () => {
+  it.each([
+    "/view?path=escape.md",
+    "/view?path=escape.html",
+    "/escape.md",
+    "/escape.html",
+  ])("GET %s returns 403 for a symlink that leads outside", async (url) => {
+    const app = await createTestApp();
+    const res = await app.request(url);
+    expect(res.status).toBe(403);
+    expect(await res.text()).not.toContain("Outside");
+  });
+
+  it("GET /view renders a symlink that stays inside the directory", async () => {
+    const app = await createTestApp();
+    const res = await app.request("/view?path=alias.md");
+    expect(res.status).toBe(200);
+    expect(await res.text()).toContain("Hello");
   });
 });

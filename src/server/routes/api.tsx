@@ -1,15 +1,17 @@
-import { basename, normalize, resolve } from "node:path";
+import { basename } from "node:path";
 import { Hono } from "hono";
 import renderToString from "preact-render-to-string";
 import type { ContentType } from "../../core/content-type.js";
 import { getContentType } from "../../core/content-type.js";
 import { FULLSCREEN_IFRAME_STYLE } from "../../core/iframe-style.js";
-import { isWithinBase } from "../../core/path.js";
+import { resolveWithinBase } from "../../core/path.js";
 import { rawFileUrl } from "../../core/url.js";
 import type { FileTreeCache } from "../../lib/file-tree-cache.js";
 import { logger } from "../../lib/logger.js";
 import { renderMarkdown } from "../../lib/markdown.js";
 import { readTextFile } from "../../lib/read-text-file.js";
+import { realPathWithinBase } from "../../lib/real-path.js";
+import { realPathErrorResponse } from "./real-path-error.js";
 
 type FileApiConfig = {
   readonly mode: "file";
@@ -45,8 +47,8 @@ function resolveAndValidatePath(
   if (!query) {
     return { ok: false, status: 400, message: "Missing path parameter" };
   }
-  const fullPath = resolve(basePath, normalize(query));
-  if (!isWithinBase(basePath, fullPath)) {
+  const fullPath = resolveWithinBase(basePath, query);
+  if (fullPath === null) {
     return { ok: false, status: 403, message: "Forbidden" };
   }
   const contentType = getContentType(query);
@@ -99,7 +101,12 @@ export function createApiRoutes(config: ApiConfig): Hono {
       );
     }
 
-    const result = await readTextFile(fullPath);
+    const realPath = await realPathWithinBase(config.targetPath, fullPath);
+    if (!realPath.ok) {
+      const { status, message } = realPathErrorResponse(realPath.error);
+      return c.text(message, status);
+    }
+    const result = await readTextFile(realPath.value);
     if (!result.ok) {
       if (result.error.type === "file-not-found") {
         return c.text("File not found", 404);

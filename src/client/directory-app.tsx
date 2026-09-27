@@ -5,7 +5,7 @@ import { Sidebar } from "../components/navigation/sidebar.js";
 import type { ContentType } from "../core/content-type.js";
 import { getContentType } from "../core/content-type.js";
 import { type FileTreeNode, filterFileTree } from "../core/file-tree.js";
-import { encodeUrlPath, rawFileUrl } from "../core/url.js";
+import { encodeUrlPath } from "../core/url.js";
 import { useFileTreeState } from "./hooks/use-file-tree-state.js";
 import { useNavigation } from "./hooks/use-navigation.js";
 import { useSearchShortcut } from "./hooks/use-search-shortcut.js";
@@ -102,7 +102,7 @@ export function DirectoryApp({
       <ContentView
         contentType={contentType}
         fileTitle={fileTitle}
-        rawUrl={rawFileUrl(currentPath)}
+        filePath={currentPath}
         htmlContent={content}
         htmlReloadKey={htmlReloadKey}
       />
