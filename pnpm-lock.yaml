@@ -62,7 +62,7 @@ importers:
         version: 4.3.3
       '@tsdown/css':
         specifier: ^0.21.2
-        version: 0.21.4(jiti@2.7.0)(postcss@8.5.33)(tsdown@0.21.4)(tsx@4.23.11)(yaml@2.8.2)
+        version: 0.21.4(jiti@2.7.0)(postcss@8.5.33)(tsdown@0.21.4)(tsx@4.23.15)(yaml@2.8.2)
       '@types/markdown-it':
         specifier: ^14.1.2
         version: 14.2.0
@@ -83,7 +83,7 @@ importers:
         version: 8.5.33
       postcss-cli:
         specifier: ^11.0.1
-        version: 11.0.1(jiti@2.7.0)(postcss@8.5.33)(tsx@4.23.11)
+        version: 11.0.1(jiti@2.7.0)(postcss@8.5.33)(tsx@4.23.15)
       semantic-release:
         specifier: ^25.0.3
         version: 25.0.9(typescript@6.0.3)
@@ -95,13 +95,13 @@ importers:
         version: 0.21.4(@tsdown/css@0.21.4)(@typescript/native-preview@7.0.0-dev.20260707.2)(typescript@6.0.3)
       tsx:
         specifier: ^4.21.0
-        version: 4.23.11
+        version: 4.23.15
       typescript:
         specifier: ^6.0.0
         version: 6.0.3
       vitest:
         specifier: ^4.0.18
-        version: 4.1.10(@types/node@25.9.5)(@vitest/coverage-v8@4.1.10)(vite@7.3.1(@types/node@25.9.5)(jiti@2.7.0)(lightningcss@1.32.0)(tsx@4.23.11)(yaml@2.8.2))
+        version: 4.1.10(@types/node@25.9.5)(@vitest/coverage-v8@4.1.10)(vite@7.3.1(@types/node@25.9.5)(jiti@2.7.0)(lightningcss@1.32.0)(tsx@4.23.15)(yaml@2.8.2))
 
 packages:
 
@@ -2836,8 +2836,8 @@ packages:
   tslib@2.8.1:
     resolution: {integrity: sha512-oJFu94HQb+KVduSUQL7wnpmqnfmLsOA/nAh6b6EH0wCEoK0/mPeXU6c3wKDV83MkOuHPRHtSXKKU99IBazS/2w==}
 
-  tsx@4.23.11:
-    resolution: {integrity: sha512-Ry2oTEUnhBdeEdWIztY8kf3/nBGnPnjMLVGL0YfdRXMORuPER5NlKmayqxtxRxwB1xBN+RivRaJfe7PM1rtiyw==}
+  tsx@4.23.15:
+    resolution: {integrity: sha512-Yiex1Ovn8z2xPpOWckIiysV1SSyRMY9BkLF++q0yKiDxCqRhosKfMg3janKkiLBwZ5c/YryloKwGZcrEmtwxKw==}
     engines: {node: '>=18.0.0'}
     hasBin: true
 
@@ -3862,10 +3862,10 @@ snapshots:
       postcss: 8.5.33
       tailwindcss: 4.3.3
 
-  '@tsdown/css@0.21.4(jiti@2.7.0)(postcss@8.5.33)(tsdown@0.21.4)(tsx@4.23.11)(yaml@2.8.2)':
+  '@tsdown/css@0.21.4(jiti@2.7.0)(postcss@8.5.33)(tsdown@0.21.4)(tsx@4.23.15)(yaml@2.8.2)':
     dependencies:
       lightningcss: 1.32.0
-      postcss-load-config: 6.0.1(jiti@2.7.0)(postcss@8.5.33)(tsx@4.23.11)(yaml@2.8.2)
+      postcss-load-config: 6.0.1(jiti@2.7.0)(postcss@8.5.33)(tsx@4.23.15)(yaml@2.8.2)
       rolldown: 1.0.0-rc.9
       tsdown: 0.21.4(@tsdown/css@0.21.4)(@typescript/native-preview@7.0.0-dev.20260707.2)(typescript@6.0.3)
     optionalDependencies:
@@ -3963,7 +3963,7 @@ snapshots:
       obug: 2.1.4
       std-env: 4.2.0
       tinyrainbow: 3.1.0
-      vitest: 4.1.10(@types/node@25.9.5)(@vitest/coverage-v8@4.1.10)(vite@7.3.1(@types/node@25.9.5)(jiti@2.7.0)(lightningcss@1.32.0)(tsx@4.23.11)(yaml@2.8.2))
+      vitest: 4.1.10(@types/node@25.9.5)(@vitest/coverage-v8@4.1.10)(vite@7.3.1(@types/node@25.9.5)(jiti@2.7.0)(lightningcss@1.32.0)(tsx@4.23.15)(yaml@2.8.2))
 
   '@vitest/expect@4.1.10':
     dependencies:
@@ -3974,13 +3974,13 @@ snapshots:
       chai: 6.2.2
       tinyrainbow: 3.1.0
 
-  '@vitest/mocker@4.1.10(vite@7.3.1(@types/node@25.9.5)(jiti@2.7.0)(lightningcss@1.32.0)(tsx@4.23.11)(yaml@2.8.2))':
+  '@vitest/mocker@4.1.10(vite@7.3.1(@types/node@25.9.5)(jiti@2.7.0)(lightningcss@1.32.0)(tsx@4.23.15)(yaml@2.8.2))':
     dependencies:
       '@vitest/spy': 4.1.10
       estree-walker: 3.0.3
       magic-string: 0.30.21
     optionalDependencies:
-      vite: 7.3.1(@types/node@25.9.5)(jiti@2.7.0)(lightningcss@1.32.0)(tsx@4.23.11)(yaml@2.8.2)
+      vite: 7.3.1(@types/node@25.9.5)(jiti@2.7.0)(lightningcss@1.32.0)(tsx@4.23.15)(yaml@2.8.2)
 
   '@vitest/pretty-format@4.1.10':
     dependencies:
@@ -5025,14 +5025,14 @@ snapshots:
       find-up: 2.1.0
       load-json-file: 4.0.0
 
-  postcss-cli@11.0.1(jiti@2.7.0)(postcss@8.5.33)(tsx@4.23.11):
+  postcss-cli@11.0.1(jiti@2.7.0)(postcss@8.5.33)(tsx@4.23.15):
     dependencies:
       chokidar: 3.6.0
       dependency-graph: 1.0.0
       fs-extra: 11.3.3
       picocolors: 1.1.1
       postcss: 8.5.33
-      postcss-load-config: 5.1.0(jiti@2.7.0)(postcss@8.5.33)(tsx@4.23.11)
+      postcss-load-config: 5.1.0(jiti@2.7.0)(postcss@8.5.33)(tsx@4.23.15)
       postcss-reporter: 7.1.0(postcss@8.5.33)
       pretty-hrtime: 1.0.3
       read-cache: 1.0.0
@@ -5043,22 +5043,22 @@ snapshots:
       - jiti
       - tsx
 
-  postcss-load-config@5.1.0(jiti@2.7.0)(postcss@8.5.33)(tsx@4.23.11):
+  postcss-load-config@5.1.0(jiti@2.7.0)(postcss@8.5.33)(tsx@4.23.15):
     dependencies:
       lilconfig: 3.1.3
       yaml: 2.8.2
     optionalDependencies:
       jiti: 2.7.0
       postcss: 8.5.33
-      tsx: 4.23.11
+      tsx: 4.23.15
 
-  postcss-load-config@6.0.1(jiti@2.7.0)(postcss@8.5.33)(tsx@4.23.11)(yaml@2.8.2):
+  postcss-load-config@6.0.1(jiti@2.7.0)(postcss@8.5.33)(tsx@4.23.15)(yaml@2.8.2):
     dependencies:
       lilconfig: 3.1.3
     optionalDependencies:
       jiti: 2.7.0
       postcss: 8.5.33
-      tsx: 4.23.11
+      tsx: 4.23.15
       yaml: 2.8.2
 
   postcss-reporter@7.1.0(postcss@8.5.33):
@@ -5506,7 +5506,7 @@ snapshots:
       unconfig-core: 7.5.0
       unrun: 0.2.32
     optionalDependencies:
-      '@tsdown/css': 0.21.4(jiti@2.7.0)(postcss@8.5.33)(tsdown@0.21.4)(tsx@4.23.11)(yaml@2.8.2)
+      '@tsdown/css': 0.21.4(jiti@2.7.0)(postcss@8.5.33)(tsdown@0.21.4)(tsx@4.23.15)(yaml@2.8.2)
       typescript: 6.0.3
     transitivePeerDependencies:
       - '@ts-macro/tsc'
@@ -5518,7 +5518,7 @@ snapshots:
   tslib@2.8.1:
     optional: true
 
-  tsx@4.23.11:
+  tsx@4.23.15:
     dependencies:
       esbuild: 0.28.2
     optionalDependencies:
@@ -5616,7 +5616,7 @@ snapshots:
       '@types/unist': 3.0.3
       vfile-message: 4.0.3
 
-  vite@7.3.1(@types/node@25.9.5)(jiti@2.7.0)(lightningcss@1.32.0)(tsx@4.23.11)(yaml@2.8.2):
+  vite@7.3.1(@types/node@25.9.5)(jiti@2.7.0)(lightningcss@1.32.0)(tsx@4.23.15)(yaml@2.8.2):
     dependencies:
       esbuild: 0.27.7
       fdir: 6.5.0(picomatch@4.0.7)
@@ -5629,13 +5629,13 @@ snapshots:
       fsevents: 2.3.3
       jiti: 2.7.0
       lightningcss: 1.32.0
-      tsx: 4.23.11
+      tsx: 4.23.15
       yaml: 2.8.2
 
-  vitest@4.1.10(@types/node@25.9.5)(@vitest/coverage-v8@4.1.10)(vite@7.3.1(@types/node@25.9.5)(jiti@2.7.0)(lightningcss@1.32.0)(tsx@4.23.11)(yaml@2.8.2)):
+  vitest@4.1.10(@types/node@25.9.5)(@vitest/coverage-v8@4.1.10)(vite@7.3.1(@types/node@25.9.5)(jiti@2.7.0)(lightningcss@1.32.0)(tsx@4.23.15)(yaml@2.8.2)):
     dependencies:
       '@vitest/expect': 4.1.10
-      '@vitest/mocker': 4.1.10(vite@7.3.1(@types/node@25.9.5)(jiti@2.7.0)(lightningcss@1.32.0)(tsx@4.23.11)(yaml@2.8.2))
+      '@vitest/mocker': 4.1.10(vite@7.3.1(@types/node@25.9.5)(jiti@2.7.0)(lightningcss@1.32.0)(tsx@4.23.15)(yaml@2.8.2))
       '@vitest/pretty-format': 4.1.10
       '@vitest/runner': 4.1.10
       '@vitest/snapshot': 4.1.10
@@ -5652,7 +5652,7 @@ snapshots:
       tinyexec: 1.2.4
       tinyglobby: 0.2.17
       tinyrainbow: 3.1.0
-      vite: 7.3.1(@types/node@25.9.5)(jiti@2.7.0)(lightningcss@1.32.0)(tsx@4.23.11)(yaml@2.8.2)
+      vite: 7.3.1(@types/node@25.9.5)(jiti@2.7.0)(lightningcss@1.32.0)(tsx@4.23.15)(yaml@2.8.2)
       why-is-node-running: 2.3.0
     optionalDependencies:
       '@types/node': 25.9.5
