@@ -1,3 +1,17 @@
+# [1.11.0](https://github.com/tuanemuy/peek/compare/v1.10.0...v1.11.0) (2026-11-17)
+
+
+### Bug Fixes
+
+* ツリーから外れたファイルでもツリーにある祖先を開く ([80af4c7](https://github.com/tuanemuy/peek/commit/80af4c7e140f3a49fc24dc57f21894b3f8d22a53))
+* 祖先の展開をフックに寄せ、Windows 区切りと閉じたディレクトリのシェブロンに対応 ([608b474](https://github.com/tuanemuy/peek/commit/608b4747bf618a089e86510ce6b516495bc54df3))
+* 祖先をツリーから求め、成功した移動のたびに開く ([0c0a53d](https://github.com/tuanemuy/peek/commit/0c0a53dbd226bf3238615c836bdb3d92ef886b75))
+
+
+### Features
+
+* ファイルツリーのディレクトリをデフォルトで折りたたむ ([21af9a4](https://github.com/tuanemuy/peek/commit/21af9a4f728084c0ecfea79401855e52a10b0ff2)), closes [#134](https://github.com/tuanemuy/peek/issues/134)
+
 # [1.10.0](https://github.com/tuanemuy/peek/compare/v1.9.1...v1.10.0) (2026-09-27)
 
 
