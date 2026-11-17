@@ -22,7 +22,7 @@ importers:
         version: 4.3.1(markdown-it-async@2.2.0)
       gunshi:
         specifier: ^0.37.0
-        version: 0.37.1
+        version: 0.37.3
       hono:
         specifier: ^4.12.3
         version: 4.12.31
@@ -1706,8 +1706,8 @@ packages:
   graceful-fs@4.2.12:
     resolution: {integrity: sha512-iuyGF2E4oafQfPsRrG2wtY2ILupMhvtdrhzrxB+0VcjsPpSPttpfYdjnGFGsTi5MaJFjI1jOKHPQ6UTbTj9TAw==}
 
-  gunshi@0.37.1:
-    resolution: {integrity: sha512-C3t35z65PQpAHay/gzEu4J/7SNWXn2NhfC4RfZQPxyOqkPfDTizthxCPoSU48OazoVherCuCpFDKI1qcY425Gw==}
+  gunshi@0.37.3:
+    resolution: {integrity: sha512-uwm23bguqDcleEetknuQnF5okLcgmQPM3iv4aWVHTPDbiSs9shh02F079NCY0mWkrIRjHqNhgmzW6k0FCXhy1g==}
     engines: {node: '>= 22'}
 
   handlebars@4.7.10:
@@ -4490,7 +4490,7 @@ snapshots:
 
   graceful-fs@4.2.12: {}
 
-  gunshi@0.37.1: {}
+  gunshi@0.37.3: {}
 
   handlebars@4.7.10:
     dependencies:
